@@ -14,21 +14,21 @@ public class Main {
                 break;
             }
 
-            int num1;
+            float num1;
             try {
-                num1 = Integer.parseInt(input1);
+                num1 = Float.parseFloat(input1);
             } catch (NumberFormatException e) {
                 System.out.println("Ошибка! Введите корректное число или 'exit'.");
                 continue;
             }
 
             System.out.print("Введите второе число: ");
-            int num2 = scanner.nextInt();
+            float num2 = scanner.nextFloat();
 
             System.out.print("Выберите действие (+, -, *, /): ");
             String op = scanner.next();
 
-            int res;
+            float res;
 
             switch (op) {
                 case "+":
