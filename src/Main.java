@@ -14,21 +14,28 @@ public class Main {
                 break;
             }
 
-            float num1;
+            int num1;
             try {
-                num1 = Float.parseFloat(input1);
+                num1 = Integer.parseInt(input1);
             } catch (NumberFormatException e) {
                 System.out.println("Ошибка! Введите корректное число или 'exit'.");
                 continue;
             }
 
             System.out.print("Введите второе число: ");
-            float num2 = scanner.nextFloat();
+            String input2 = scanner.next();
+            int num2;
+            try {
+                num2 = Integer.parseInt(input2);
+            } catch (NumberFormatException e) {
+                System.out.println("Ошибка! Второе число введено неверно.");
+                continue;
+            }
 
             System.out.print("Выберите действие (+, -, *, /): ");
             String op = scanner.next();
 
-            float res;
+            int res;
 
             switch (op) {
                 case "+":
@@ -37,7 +44,7 @@ public class Main {
                     break;
                 case "-":
                     res = num1 - num2;
-                    System.out.print("Результаat: " + res);
+                    System.out.print("Результат: " + res);
                     break;
                 case "*":
                     res = num1 * num2;
