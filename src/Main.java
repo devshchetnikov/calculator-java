@@ -5,66 +5,75 @@ public class Main {
     public static void main(String[] args) {
         Scanner scanner = new Scanner(System.in);
 
+        System.out.println("--- Добро пожаловать в расширенный калькулятор! ---");
+        System.out.println("Вы можете выйти в любой момент, написав 'exit'.");
+
         while (true) {
-            System.out.print("\nВведите первое число или напишите (exit): ");
+            System.out.print("\nВведите первое число: ");
             String input1 = scanner.next();
+            if (input1.equalsIgnoreCase("exit")) break;
 
-            if (input1.equalsIgnoreCase("exit")) {
-                System.out.println("Программа завершена. До свидания!");
-                break;
-            }
-
-            int num1;
+            double num1;
             try {
-                num1 = Integer.parseInt(input1);
+                num1 = Double.parseDouble(input1.replace(",", "."));
             } catch (NumberFormatException e) {
-                System.out.println("Ошибка! Введите корректное число или 'exit'.");
+                System.out.println("Ошибка! Некорректное число.");
                 continue;
             }
+
+            System.out.print("Выберите действие (+, -, *, /, ^, %): ");
+            String op = scanner.next();
+            if (op.equalsIgnoreCase("exit")) break;
 
             System.out.print("Введите второе число: ");
             String input2 = scanner.next();
-            int num2;
+            if (input2.equalsIgnoreCase("exit")) break;
+
+            double num2;
             try {
-                num2 = Integer.parseInt(input2);
+                num2 = Double.parseDouble(input2.replace(",", "."));
             } catch (NumberFormatException e) {
-                System.out.println("Ошибка! Второе число введено неверно.");
+                System.out.println("Ошибка! Некорректное второе число.");
                 continue;
             }
 
-            System.out.print("Выберите действие (+, -, *, /): ");
-            String op = scanner.next();
-
-            int res;
-
+            double res;
             switch (op) {
                 case "+":
                     res = num1 + num2;
-                    System.out.print("Результат: " + res);
                     break;
                 case "-":
                     res = num1 - num2;
-                    System.out.print("Результат: " + res);
                     break;
                 case "*":
                     res = num1 * num2;
-                    System.out.print("Результат: " + res);
                     break;
                 case "/":
                     if (num2 == 0) {
-                        System.out.print("Ошибка! Делить на ноль нельзя.");
-                    } else {
-                        res = num1 / num2;
-                        System.out.print("Результат: " + res);
+                        System.out.println("Ошибка! Делить на ноль нельзя.");
+                        continue;
                     }
+                    res = num1 / num2;
+                    break;
+                case "^":
+                    res = Math.pow(num1, num2);
+                    break;
+                case "%":
+                    res = num1 % num2;
                     break;
                 default:
-                    System.out.print("Неверная операция!");
-                    break;
+                    System.out.println("Ошибка! Неверная операция.");
+                    continue;
             }
-            System.out.println();
+
+            if (res % 1 == 0) {
+                System.out.printf("Результат: %.0f\n", res);
+            } else {
+                System.out.println("Результат: " + res);
+            }
         }
 
+        System.out.println("Программа завершена. До свидания!");
         scanner.close();
     }
 }
