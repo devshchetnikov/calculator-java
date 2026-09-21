@@ -1,6 +1,9 @@
-import java.util.Scanner;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Scanner;
 
 public class Main {
 
@@ -9,7 +12,7 @@ public class Main {
             List<String> history = new ArrayList<>();
 
             System.out.println("--- Добро пожаловать в расширенный калькулятор! ---");
-            System.out.println("Доступные команды: 'exit' - выход, 'history' - история.");
+            System.out.println("Доступные команды: 'exit' - выход, 'history' - история, 'clear' - очистить историю.");
 
             while (true) {
                 System.out.print("\nВведите первое число (или команду): ");
@@ -18,6 +21,11 @@ public class Main {
                 if (input1.equalsIgnoreCase("exit")) break;
                 if (input1.equalsIgnoreCase("history")) {
                     printHistory(history);
+                    continue;
+                }
+                if (input1.equalsIgnoreCase("clear")) {
+                    history.clear();
+                    System.out.println("История успешно очищена.");
                     continue;
                 }
 
@@ -30,14 +38,15 @@ public class Main {
                 }
 
                 System.out.print("Выберите действие (+, -, *, /, ^, %, sin, cos, sqrt): ");
-                String op = scanner.nextLine().trim();
+                String op = scanner.nextLine().trim().toLowerCase(); // Приводим к нижнему регистру
                 if (op.equalsIgnoreCase("exit")) break;
 
-                if (op.equalsIgnoreCase("sin") || op.equalsIgnoreCase("cos") || op.equalsIgnoreCase("sqrt")) {
+                // Унарные операции
+                if (op.equals("sin") || op.equals("cos") || op.equals("sqrt")) {
                     double res = 0;
                     String expression = "";
 
-                    switch (op.toLowerCase()) {
+                    switch (op) {
                         case "sin":
                             res = Math.sin(Math.toRadians(num1));
                             expression = String.format("sin(%s) = %s", formatResult(num1), formatResult(res));
@@ -61,6 +70,7 @@ public class Main {
                     continue;
                 }
 
+                // Бинарные операции
                 System.out.print("Введите второе число: ");
                 String input2 = scanner.nextLine().trim();
                 if (input2.equalsIgnoreCase("exit")) break;
@@ -85,8 +95,14 @@ public class Main {
                         }
                         res = num1 / num2;
                         break;
+                    case "%":
+                        if (num2 == 0) { // Исправлен баг деления на ноль для остатка
+                            System.out.println("Ошибка! Делить на ноль нельзя.");
+                            continue;
+                        }
+                        res = num1 % num2;
+                        break;
                     case "^": res = Math.pow(num1, num2); break;
-                    case "%": res = num1 % num2; break;
                     default:
                         System.out.println("Ошибка! Неверная операция.");
                         continue;
@@ -103,15 +119,16 @@ public class Main {
         }
     }
 
-    // Метод для красивого вывода чисел (убирает .0 у целых)
+    // Более надежный метод для красивого вывода чисел
     private static String formatResult(double val) {
-        if (val % 1 == 0) {
-            return String.format("%.0f", val);
-        }
-        return String.valueOf(val);
+        if (Double.isNaN(val)) return "NaN";
+        if (Double.isInfinite(val)) return "Бесконечность";
+
+        DecimalFormat df = new DecimalFormat("#.##########");
+        df.setDecimalFormatSymbols(DecimalFormatSymbols.getInstance(Locale.US));
+        return df.format(val);
     }
 
-    // Метод для вывода истории
     private static void printHistory(List<String> history) {
         System.out.println("\n--- История операций ---");
         if (history.isEmpty()) {
