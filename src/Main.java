@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Scanner;
-import java.util.NoSuchElementException; // Импортируем исключение
+import java.util.NoSuchElementException;
 
 
 public class Main {
@@ -15,6 +15,7 @@ public class Main {
 
             System.out.println("--- Добро пожаловать в расширенный калькулятор! ---");
             System.out.println("Доступные команды: 'exit' - выход, 'history' - история, 'clear' - очистить историю.");
+            System.out.println("Функции: +, -, *, /, ^, %, sin, cos, tan, log, log10, sqrt");
 
             while (true) {
                 try {
@@ -40,12 +41,14 @@ public class Main {
                         continue;
                     }
 
-                    System.out.print("Выберите действие (+, -, *, /, ^, %, sin, cos, sqrt): ");
-                    String op = scanner.nextLine().trim().toLowerCase(); // Приводим к нижнему регистру
+                    System.out.print("Выберите действие (+, -, *, /, ^, %, sin, cos, tan, log, log10, sqrt): ");
+                    String op = scanner.nextLine().trim().toLowerCase();
                     if (op.equalsIgnoreCase("exit")) break;
 
-                    // Унарные операции
-                    if (op.equals("sin") || op.equals("cos") || op.equals("sqrt")) {
+                    // Унарные операции (с одним числом)
+                    if (op.equals("sin") || op.equals("cos") || op.equals("tan") ||
+                            op.equals("sqrt") || op.equals("log") || op.equals("log10")) {
+
                         double res = 0;
                         String expression = "";
 
@@ -58,6 +61,15 @@ public class Main {
                                 res = Math.cos(Math.toRadians(num1));
                                 expression = String.format("cos(%s) = %s", formatResult(num1), formatResult(res));
                                 break;
+                            case "tan":
+                                // Проверка на тангенс 90, 270 и т.д. градусов
+                                if (Math.abs(num1 % 180) == 90) {
+                                    System.out.println("Ошибка! Тангенс " + num1 + " градусов не существует.");
+                                    continue;
+                                }
+                                res = Math.tan(Math.toRadians(num1));
+                                expression = String.format("tan(%s) = %s", formatResult(num1), formatResult(res));
+                                break;
                             case "sqrt":
                                 if (num1 < 0) {
                                     System.out.println("Ошибка! Нельзя извлечь корень из отрицательного числа.");
@@ -66,6 +78,22 @@ public class Main {
                                 res = Math.sqrt(num1);
                                 expression = String.format("sqrt(%s) = %s", formatResult(num1), formatResult(res));
                                 break;
+                            case "log":
+                                if (num1 <= 0) {
+                                    System.out.println("Ошибка! Натуральный логарифм определен только для чисел > 0.");
+                                    continue;
+                                }
+                                res = Math.log(num1);
+                                expression = String.format("log(%s) = %s", formatResult(num1), formatResult(res));
+                                break;
+                            case "log10":
+                                if (num1 <= 0) {
+                                    System.out.println("Ошибка! Десятичный логарифм определен только для чисел > 0.");
+                                    continue;
+                                }
+                                res = Math.log10(num1);
+                                expression = String.format("log10(%s) = %s", formatResult(num1), formatResult(res));
+                                break;
                         }
 
                         System.out.println("Результат: " + formatResult(res));
@@ -73,6 +101,7 @@ public class Main {
                         continue;
                     }
 
+                    // Бинарные операции (требуют второе число)
                     System.out.print("Введите второе число: ");
                     String input2 = scanner.nextLine().trim();
                     if (input2.equalsIgnoreCase("exit")) break;
@@ -98,7 +127,7 @@ public class Main {
                             res = num1 / num2;
                             break;
                         case "%":
-                            if (num2 == 0) { // Исправлен баг деления на ноль для остатка
+                            if (num2 == 0) {
                                 System.out.println("Ошибка! Делить на ноль нельзя.");
                                 continue;
                             }
@@ -112,8 +141,6 @@ public class Main {
 
                     String formattedRes = formatResult(res);
                     System.out.println("Результат: " + formattedRes);
-
-                    // Сохраняем в историю
                     history.add(String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes));
 
                 } catch (NoSuchElementException e) {
@@ -129,6 +156,11 @@ public class Main {
     private static String formatResult(double val) {
         if (Double.isNaN(val)) return "NaN";
         if (Double.isInfinite(val)) return "Бесконечность";
+
+        // Исправление округления Java для тригонометрии (например, sin(180) должен быть 0, а не -1.22e-16)
+        if (Math.abs(val) < 1e-10) {
+            val = 0.0;
+        }
 
         DecimalFormat df = new DecimalFormat("#.##########");
         df.setDecimalFormatSymbols(DecimalFormatSymbols.getInstance(Locale.US));
