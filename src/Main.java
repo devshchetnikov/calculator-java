@@ -6,7 +6,6 @@ import java.util.Locale;
 import java.util.Scanner;
 import java.util.NoSuchElementException;
 
-
 public class Main {
 
     public static void main(String[] args) {
@@ -15,11 +14,12 @@ public class Main {
 
             System.out.println("--- Добро пожаловать в расширенный калькулятор! ---");
             System.out.println("Доступные команды: 'exit' - выход, 'history' - история, 'clear' - очистить историю.");
+            System.out.println("Поддерживаются константы: 'pi', 'e'");
             System.out.println("Функции: +, -, *, /, ^, %, sin, cos, tan, log, log10, sqrt");
 
             while (true) {
                 try {
-                    System.out.print("\nВведите первое число (или команду): ");
+                    System.out.print("\nВведите первое число/константу (или команду): ");
                     String input1 = scanner.nextLine().trim();
 
                     if (input1.equalsIgnoreCase("exit")) break;
@@ -35,7 +35,7 @@ public class Main {
 
                     double num1;
                     try {
-                        num1 = Double.parseDouble(input1.replace(",", "."));
+                        num1 = parseNumber(input1);
                     } catch (NumberFormatException e) {
                         System.out.println("Ошибка! Некорректное число или команда.");
                         continue;
@@ -62,9 +62,9 @@ public class Main {
                                 expression = String.format("cos(%s) = %s", formatResult(num1), formatResult(res));
                                 break;
                             case "tan":
-                                // Проверка на тангенс 90, 270 и т.д. градусов
-                                if (Math.abs(num1 % 180) == 90) {
-                                    System.out.println("Ошибка! Тангенс " + num1 + " градусов не существует.");
+                                // Проверка на тангенс 90, 270 и т.д. градусов с учетом погрешности double
+                                if (Math.abs(Math.cos(Math.toRadians(num1))) < 1e-10) {
+                                    System.out.println("Ошибка! Тангенс " + num1 + " градусов не существует (стремится к бесконечности).");
                                     continue;
                                 }
                                 res = Math.tan(Math.toRadians(num1));
@@ -102,13 +102,13 @@ public class Main {
                     }
 
                     // Бинарные операции (требуют второе число)
-                    System.out.print("Введите второе число: ");
+                    System.out.print("Введите второе число или константу: ");
                     String input2 = scanner.nextLine().trim();
                     if (input2.equalsIgnoreCase("exit")) break;
 
                     double num2;
                     try {
-                        num2 = Double.parseDouble(input2.replace(",", "."));
+                        num2 = parseNumber(input2);
                     } catch (NumberFormatException e) {
                         System.out.println("Ошибка! Некорректное второе число.");
                         continue;
@@ -153,11 +153,19 @@ public class Main {
         }
     }
 
+    // Вспомогательный метод парсинга чисел и констант (Улучшение)
+    private static double parseNumber(String input) throws NumberFormatException {
+        String cleanInput = input.replace(",", ".").toLowerCase();
+        if (cleanInput.equals("pi")) return Math.PI;
+        if (cleanInput.equals("e")) return Math.E;
+        return Double.parseDouble(cleanInput);
+    }
+
     private static String formatResult(double val) {
         if (Double.isNaN(val)) return "NaN";
         if (Double.isInfinite(val)) return "Бесконечность";
 
-        // Исправление округления Java для тригонометрии (например, sin(180) должен быть 0, а не -1.22e-16)
+        // Исправление округления Java для тригонометрии
         if (Math.abs(val) < 1e-10) {
             val = 0.0;
         }
@@ -167,6 +175,7 @@ public class Main {
         return df.format(val);
     }
 
+    // Исправлено: добавлены закрывающие скобки и вывод элементов (Исправление ошибки)
     private static void printHistory(List<String> history) {
         System.out.println("\n--- История операций ---");
         if (history.isEmpty()) {
@@ -176,6 +185,5 @@ public class Main {
                 System.out.println(record);
             }
         }
-        System.out.println("--------------------");
     }
 }
