@@ -25,7 +25,8 @@ public class Main {
                     System.out.print("\nВведите первое число/константу (или команду): ");
                     String input1 = scanner.nextLine().trim();
 
-                    if (input1.equalsIgnoreCase("exit")) break;
+                    if (input1.equalsIgnoreCase("exit")) 
+                        break;
                     if (input1.equalsIgnoreCase("history")) {
                         printHistory(history);
                         continue;
