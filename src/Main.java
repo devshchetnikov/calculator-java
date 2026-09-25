@@ -8,13 +8,15 @@ import java.util.NoSuchElementException;
 
 public class Main {
 
+    private static double ans = 0; // Переменная для хранения последнего результата
+
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
             List<String> history = new ArrayList<>();
 
             System.out.println("--- Добро пожаловать в расширенный калькулятор! ---");
             System.out.println("Доступные команды: 'exit' - выход, 'history' - история, 'clear' - очистить историю.");
-            System.out.println("Поддерживаются константы: 'pi', 'e'");
+            System.out.println("Поддерживаются константы: 'pi', 'e', 'ans' (предыдущий ответ)");
             System.out.println("Функции: +, -, *, /, ^, %, sin, cos, tan, log, log10, sqrt");
 
             while (true) {
@@ -62,9 +64,8 @@ public class Main {
                                 expression = String.format("cos(%s) = %s", formatResult(num1), formatResult(res));
                                 break;
                             case "tan":
-                                // Проверка на тангенс 90, 270 и т.д. градусов с учетом погрешности double
                                 if (Math.abs(Math.cos(Math.toRadians(num1))) < 1e-10) {
-                                    System.out.println("Ошибка! Тангенс " + num1 + " градусов не существует (стремится к бесконечности).");
+                                    System.out.println("Ошибка! Тангенс " + num1 + " градусов не существует.");
                                     continue;
                                 }
                                 res = Math.tan(Math.toRadians(num1));
@@ -96,6 +97,7 @@ public class Main {
                                 break;
                         }
 
+                        ans = res; // Сохраняем для ans
                         System.out.println("Результат: " + formatResult(res));
                         history.add(expression);
                         continue;
@@ -139,6 +141,7 @@ public class Main {
                             continue;
                     }
 
+                    ans = res; // Сохраняем для ans
                     String formattedRes = formatResult(res);
                     System.out.println("Результат: " + formattedRes);
                     history.add(String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes));
@@ -153,11 +156,11 @@ public class Main {
         }
     }
 
-    // Вспомогательный метод парсинга чисел и констант (Улучшение)
     private static double parseNumber(String input) throws NumberFormatException {
         String cleanInput = input.replace(",", ".").toLowerCase();
         if (cleanInput.equals("pi")) return Math.PI;
         if (cleanInput.equals("e")) return Math.E;
+        if (cleanInput.equals("ans")) return ans;
         return Double.parseDouble(cleanInput);
     }
 
@@ -165,25 +168,24 @@ public class Main {
         if (Double.isNaN(val)) return "NaN";
         if (Double.isInfinite(val)) return "Бесконечность";
 
-        // Исправление округления Java для тригонометрии
         if (Math.abs(val) < 1e-10) {
             val = 0.0;
         }
 
-        DecimalFormat df = new DecimalFormat("#.##########");
-        df.setDecimalFormatSymbols(DecimalFormatSymbols.getInstance(Locale.US));
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
+        DecimalFormat df = new DecimalFormat("#.##########", symbols);
         return df.format(val);
     }
 
-    // Исправлено: добавлены закрывающие скобки и вывод элементов (Исправление ошибки)
     private static void printHistory(List<String> history) {
-        System.out.println("\n--- История операций ---");
         if (history.isEmpty()) {
-            System.out.println("История пока пуста.");
+            System.out.println("История пуста.");
         } else {
-            for (String record : history) {
-                System.out.println(record);
+            System.out.println("\n--- История операций ---");
+            for (int i = 0; i < history.size(); i++) {
+                System.out.println((i + 1) + ". " + history.get(i));
             }
+            System.out.println("------------------------");
         }
     }
 }
