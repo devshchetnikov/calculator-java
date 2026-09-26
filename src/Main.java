@@ -67,7 +67,7 @@ public class Main {
                                 break;
                             case "tan":
                                 if (Math.abs(Math.cos(Math.toRadians(num1))) < 1e-10) {
-                                    System.out.println("Ошибка! Тангенс " + num1 + " градусов не существует.");
+                                    System.out.println("Ошибка! Тангенс " + formatResult(num1) + " градусов не существует.");
                                     continue;
                                 }
                                 res = Math.tan(Math.toRadians(num1));
@@ -99,13 +99,12 @@ public class Main {
                                 break;
                         }
 
-                        ans = res; // Сохраняем для ans
+                        ans = res;
                         System.out.println("Результат: " + formatResult(res));
                         history.add(expression);
                         continue;
                     }
 
-                    // Бинарные операции (требуют второе число)
                     System.out.print("Введите второе число или константу: ");
                     String input2 = scanner.nextLine().trim();
                     if (input2.equalsIgnoreCase("exit")) break;
@@ -143,7 +142,7 @@ public class Main {
                             continue;
                     }
 
-                    ans = res; // Сохраняем для ans
+                    ans = res;
                     String formattedRes = formatResult(res);
                     System.out.println("Результат: " + formattedRes);
                     history.add(String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes));
@@ -183,11 +182,10 @@ public class Main {
         if (history.isEmpty()) {
             System.out.println("История пуста.");
         } else {
-            System.out.println("\n--- История операций ---");
+            System.out.println("--- История операций ---");
             for (int i = 0; i < history.size(); i++) {
                 System.out.println((i + 1) + ". " + history.get(i));
             }
-            System.out.println("------------------------");
         }
     }
 }
