@@ -6,7 +6,6 @@ import java.util.Locale;
 import java.util.Scanner;
 import java.util.NoSuchElementException;
 
-
 public class Main {
 
     private static double ans = 0; // Переменная для хранения последнего результата
@@ -25,7 +24,7 @@ public class Main {
                     System.out.print("\nВведите первое число/константу (или команду): ");
                     String input1 = scanner.nextLine().trim();
 
-                    if (input1.equalsIgnoreCase("exit")) 
+                    if (input1.equalsIgnoreCase("exit"))
                         break;
                     if (input1.equalsIgnoreCase("history")) {
                         printHistory(history);
@@ -179,13 +178,14 @@ public class Main {
     }
 
     private static void printHistory(List<String> history) {
+        System.out.println("\n--- История операций ---");
         if (history.isEmpty()) {
-            System.out.println("История пуста.");
+            System.out.println("История пока пуста.");
         } else {
-            System.out.println("--- История операций ---");
             for (int i = 0; i < history.size(); i++) {
-                System.out.println((i + 1) + ". " + history.get(i));
+                System.out.printf("%d) %s\n", (i + 1), history.get(i));
             }
         }
+        System.out.println("------------------------");
     }
 }
