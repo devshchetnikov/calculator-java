@@ -9,23 +9,20 @@ import java.util.NoSuchElementException;
 public class Main {
 
     private static double ans = 0; // Переменная для хранения последнего результата
+    private static boolean useDegrees = true; // Режим тригонометрии (true - градусы, false - радианы)
 
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
             List<String> history = new ArrayList<>();
 
-            System.out.println("--- Добро пожаловать в расширенный калькулятор! ---");
-            System.out.println("Доступные команды: 'exit' - выход, 'history' - история, 'clear' - очистить историю.");
-            System.out.println("Поддерживаются константы: 'pi', 'e', 'ans' (предыдущий ответ)");
-            System.out.println("Функции: +, -, *, /, ^, %, sin, cos, tan, log, log10, sqrt");
+            showWelcomeMessage();
 
             while (true) {
                 try {
-                    System.out.print("\nВведите первое число/константу (или команду): ");
+                    System.out.print("\nВведите число/константу (или команду): ");
                     String input1 = scanner.nextLine().trim();
 
-                    if (input1.equalsIgnoreCase("exit"))
-                        break;
+                    if (input1.equalsIgnoreCase("exit")) break;
                     if (input1.equalsIgnoreCase("history")) {
                         printHistory(history);
                         continue;
@@ -35,42 +32,62 @@ public class Main {
                         System.out.println("История успешно очищена.");
                         continue;
                     }
+                    if (input1.equalsIgnoreCase("help")) {
+                        showWelcomeMessage();
+                        continue;
+                    }
+                    if (input1.equalsIgnoreCase("mode")) {
+                        useDegrees = !useDegrees;
+                        System.out.println("Режим тригонометрии изменен! Текущий: " + (useDegrees ? "ГРАДУСЫ" : "РАДИАНЫ"));
+                        continue;
+                    }
 
                     double num1;
                     try {
                         num1 = parseNumber(input1);
                     } catch (NumberFormatException e) {
-                        System.out.println("Ошибка! Некорректное число или команда.");
+                        System.out.println("Ошибка! Некорректное число или команда. Введите 'help' для справки.");
                         continue;
                     }
 
-                    System.out.print("Выберите действие (+, -, *, /, ^, %, sin, cos, tan, log, log10, sqrt): ");
+                    System.out.print("Выберите действие (+, -, *, /, ^, %, !, sin, cos, tan, log, log10, sqrt): ");
                     String op = scanner.nextLine().trim().toLowerCase();
                     if (op.equalsIgnoreCase("exit")) break;
 
                     // Унарные операции (с одним числом)
                     if (op.equals("sin") || op.equals("cos") || op.equals("tan") ||
-                            op.equals("sqrt") || op.equals("log") || op.equals("log10")) {
+                            op.equals("sqrt") || op.equals("log") || op.equals("log10") || op.equals("!")) {
 
                         double res = 0;
                         String expression = "";
 
                         switch (op) {
-                            case "sin":
-                                res = Math.sin(Math.toRadians(num1));
-                                expression = String.format("sin(%s) = %s", formatResult(num1), formatResult(res));
-                                break;
-                            case "cos":
-                                res = Math.cos(Math.toRadians(num1));
-                                expression = String.format("cos(%s) = %s", formatResult(num1), formatResult(res));
-                                break;
-                            case "tan":
-                                if (Math.abs(Math.cos(Math.toRadians(num1))) < 1e-10) {
-                                    System.out.println("Ошибка! Тангенс " + formatResult(num1) + " градусов не существует.");
+                            case "!":
+                                if (num1 < 0 || num1 != Math.floor(num1)) {
+                                    System.out.println("Ошибка! Факториал определен только для целых неотрицательных чисел.");
                                     continue;
                                 }
-                                res = Math.tan(Math.toRadians(num1));
-                                expression = String.format("tan(%s) = %s", formatResult(num1), formatResult(res));
+                                res = factorial((int) num1);
+                                expression = String.format("%s! = %s", formatResult(num1), formatResult(res));
+                                break;
+                            case "sin":
+                                double angleSin = useDegrees ? Math.toRadians(num1) : num1;
+                                res = Math.sin(angleSin);
+                                expression = String.format("sin(%s%s) = %s", formatResult(num1), useDegrees ? "°" : " рад", formatResult(res));
+                                break;
+                            case "cos":
+                                double angleCos = useDegrees ? Math.toRadians(num1) : num1;
+                                res = Math.cos(angleCos);
+                                expression = String.format("cos(%s%s) = %s", formatResult(num1), useDegrees ? "°" : " рад", formatResult(res));
+                                break;
+                            case "tan":
+                                double angleTan = useDegrees ? Math.toRadians(num1) : num1;
+                                if (Math.abs(Math.cos(angleTan)) < 1e-10) {
+                                    System.out.println("Ошибка! Тангенс для этого угла не существует.");
+                                    continue;
+                                }
+                                res = Math.tan(angleTan);
+                                expression = String.format("tan(%s%s) = %s", formatResult(num1), useDegrees ? "°" : " рад", formatResult(res));
                                 break;
                             case "sqrt":
                                 if (num1 < 0) {
@@ -122,14 +139,14 @@ public class Main {
                         case "-": res = num1 - num2; break;
                         case "*": res = num1 * num2; break;
                         case "/":
-                            if (num2 == 0) {
+                            if (Math.abs(num2) < 1e-10) {
                                 System.out.println("Ошибка! Делить на ноль нельзя.");
                                 continue;
                             }
                             res = num1 / num2;
                             break;
                         case "%":
-                            if (num2 == 0) {
+                            if (Math.abs(num2) < 1e-10) {
                                 System.out.println("Ошибка! Делить на ноль нельзя.");
                                 continue;
                             }
@@ -178,14 +195,16 @@ public class Main {
     }
 
     private static void printHistory(List<String> history) {
-        System.out.println("\n--- История операций ---");
         if (history.isEmpty()) {
-            System.out.println("История пока пуста.");
+            System.out.println("История пуста.");
         } else {
-            for (int i = 0; i < history.size(); i++) {
-                System.out.printf("%d) %s\n", (i + 1), history.get(i));
+            System.out.println("\n--- История операций ---");
+            for (String item : history) {
+                System.out.println(item);
             }
+            System.out.println("------------------------");
         }
-        System.out.println("------------------------");
     }
-}
+
+    private static void showWelcomeMessage() {
+        System.out.println("\n--- Добро пожаловать в расширенный калькулятор! ---");
