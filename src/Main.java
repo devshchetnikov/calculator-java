@@ -206,6 +206,7 @@ public class Main {
             System.out.println("------------------------");
         }
     }
+    
 
     private static void showWelcomeMessage() {
         System.out.println("\n--- Добро пожаловать в расширенный калькулятор! ---");
