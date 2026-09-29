@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Scanner;
-import java.util.NoSuchElementException;
 
 public class Main {
 
@@ -14,7 +13,6 @@ public class Main {
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
             List<String> history = new ArrayList<>();
-            
 
             showWelcomeMessage();
 
@@ -164,49 +162,50 @@ public class Main {
                     System.out.println("Результат: " + formattedRes);
                     history.add(String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes));
 
-                } catch (NoSuchElementException e) {
-                    System.out.println("\nВвод принудительно завершен. Выход из программы.");
-                    break;
+                } catch (Exception e) {
+                    System.out.println("Произошла непредвиденная ошибка: " + e.getMessage());
                 }
             }
-
-            System.out.println("Программа завершена. До свидания!");
         }
     }
 
+    // Метод парсинга чисел и констант (pi, e, ans)
     private static double parseNumber(String input) throws NumberFormatException {
-        String cleanInput = input.replace(",", ".").toLowerCase();
-        if (cleanInput.equals("pi")) return Math.PI;
-        if (cleanInput.equals("e")) return Math.E;
-        if (cleanInput.equals("ans")) return ans;
-        return Double.parseDouble(cleanInput);
+        if (input.equalsIgnoreCase("pi")) return Math.PI;
+        if (input.equalsIgnoreCase("e")) return Math.E;
+        if (input.equalsIgnoreCase("ans")) return ans;
+        return Double.parseDouble(input.replace(',', '.')); // Замена запятой на точку для поддержки разных локалей
     }
 
-    private static String formatResult(double val) {
-        if (Double.isNaN(val)) return "NaN";
-        if (Double.isInfinite(val)) return "Бесконечность";
-
-        if (Math.abs(val) < 1e-10) {
-            val = 0.0;
+    // Метод для расчета факториала
+    private static double factorial(int n) {
+        double result = 1;
+        for (int i = 1; i <= n; i++) {
+            result *= i;
         }
+        return result;
+    }
 
+    // Метод форматирования вывода (убирает лишние нули после запятой)
+    private static String formatResult(double value) {
         DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
         DecimalFormat df = new DecimalFormat("#.##########", symbols);
-        return df.format(val);
+        return df.format(value);
     }
 
+    // Вывод истории операций
     private static void printHistory(List<String> history) {
         if (history.isEmpty()) {
             System.out.println("История пуста.");
         } else {
-            System.out.println("\n--- История операций ---");
-            for (String item : history) {
-                System.out.println(item);
+            System.out.println("=== История операций ===");
+            for (String record : history) {
+                System.out.println(record);
             }
-            System.out.println("------------------------");
         }
     }
-    
 
+    // Приветственное сообщение и список команд
     private static void showWelcomeMessage() {
-        System.out.println("\n--- Добро пожаловать в расширенный калькулятор! ---");
+        System.out.println("=== Инженерный калькулятор ===");
+
