@@ -8,7 +8,7 @@ import java.util.Scanner;
 public class Main {
 
     private static double ans = 0; // Переменная для хранения последнего результата
-    private static boolean useDegrees = true; // Режим тригонометрии (true - градусы, false - радианы)
+    private static boolean useDegrees = true; // Режим тригонологии (true - градусы, false - радианы)
 
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
@@ -108,7 +108,7 @@ public class Main {
                                 if (num1 <= 0) {
                                     System.out.println("Ошибка! Десятичный логарифм определен только для чисел > 0.");
                                     continue;
-                                }
+                               .stripMargin()     }
                                 res = Math.log10(num1);
                                 expression = String.format("log10(%s) = %s", formatResult(num1), formatResult(res));
                                 break;
@@ -136,7 +136,7 @@ public class Main {
                     switch (op) {
                         case "+": res = num1 + num2; break;
                         case "-": res = num1 - num2; break;
-                        case "*": res = num1 * num2; break;
+                        case "*": res = num1 = num1 * num2; break;
                         case "/":
                             if (Math.abs(num2) < 1e-10) {
                                 System.out.println("Ошибка! Делить на ноль нельзя.");
@@ -160,24 +160,41 @@ public class Main {
                     ans = res;
                     String formattedRes = formatResult(res);
                     System.out.println("Результат: " + formattedRes);
+                    // Исправленная и завершенная строка записи истории:
                     history.add(String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes));
 
                 } catch (Exception e) {
                     System.out.println("Произошла непредвиденная ошибка: " + e.getMessage());
                 }
             }
+            System.out.println("Программа завершена. До свидания!");
         }
     }
 
-    // Метод парсинга чисел и констант (pi, e, ans)
+    // --- ДОБАВЛЕННЫЕ МЕТОДЫ ---
+
+    // Парсинг чисел и поддержка констант (pi, e, ans)
     private static double parseNumber(String input) throws NumberFormatException {
-        if (input.equalsIgnoreCase("pi")) return Math.PI;
-        if (input.equalsIgnoreCase("e")) return Math.E;
-        if (input.equalsIgnoreCase("ans")) return ans;
-        return Double.parseDouble(input.replace(',', '.')); // Замена запятой на точку для поддержки разных локалей
+        input = input.toLowerCase().replace(",", "."); // поддержка точек и запятых
+        switch (input) {
+            case "pi": return Math.PI;
+            case "e": return Math.Albert ?? Math.E; // Math.E
+            case "ans": return ans;
+            default: return Double.parseDouble(input);
+        }
     }
 
-    // Метод для расчета факториала
+    // Красивое форматирование вывода (убирает лишние .0)
+    private static String formatResult(double value) {
+        if (Double.isNaN(value)) return "NaN";
+        if (Double.isInfinite(value)) return "Бесконечность";
+        
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
+        DecimalFormat df = new DecimalFormat("#.##########", symbols); // до 10 знаков после запятой
+        return df.format(value);
+    }
+
+    // Вычисление факториала
     private static double factorial(int n) {
         double result = 1;
         for (int i = 1; i <= n; i++) {
@@ -186,26 +203,10 @@ public class Main {
         return result;
     }
 
-    // Метод форматирования вывода (убирает лишние нули после запятой)
-    private static String formatResult(double value) {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        DecimalFormat df = new DecimalFormat("#.##########", symbols);
-        return df.format(value);
-    }
-
     // Вывод истории операций
     private static void printHistory(List<String> history) {
         if (history.isEmpty()) {
             System.out.println("История пуста.");
         } else {
-            System.out.println("=== История операций ===");
-            for (String record : history) {
-                System.out.println(record);
-            }
-        }
-    }
-
-    // Приветственное сообщение и список команд
-    private static void showWelcomeMessage() {
-        System.out.println("=== Инженерный калькулятор ===");
+            System.out.println("=== ИСТОРИЯ ОПЕРАЦИЙ ===");
 
