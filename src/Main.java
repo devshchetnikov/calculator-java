@@ -136,7 +136,7 @@ public class Main {
                     switch (op) {
                         case "+": res = num1 + num2; break;
                         case "-": res = num1 - num2; break;
-                        case "*": res = num1 * num2; break; // Исправлен баг с дублированием num1
+                        case "*": res = num1 * num2; break;
                         case "/":
                             if (Math.abs(num2) < 1e-10) {
                                 System.out.println("Ошибка! Делить на ноль нельзя.");
@@ -171,23 +171,27 @@ public class Main {
         }
     }
 
-    // Парсинг чисел и констант (pi, e, ans)
+    // 1. Метод парсинга чисел и констант (pi, e, ans)
     private static double parseNumber(String input) throws NumberFormatException {
         if (input.equalsIgnoreCase("pi")) return Math.PI;
         if (input.equalsIgnoreCase("e")) return Math.E;
         if (input.equalsIgnoreCase("ans")) return ans;
-        // Заменяем запятую на точку для универсальности ввода
+        
+        // Заменяем запятую на точку для поддержки обоих форматов ввода
         return Double.parseDouble(input.replace(",", "."));
     }
 
-    // Красивое форматирование вывода (убирает лишние нули после точки)
+    // 2. Метод красивого форматирования чисел (убирает .0 у целых)
     private static String formatResult(double value) {
+        if (Double.isInfinite(value) || Double.isNaN(value)) {
+            return String.valueOf(value);
+        }
         DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        DecimalFormat df = new DecimalFormat("#.##########", symbols);
+        DecimalFormat df = new DecimalFormat("#.##########", symbols); // до 10 знаков после запятой
         return df.format(value);
     }
 
-    // Расчет факториала
+    // 3. Метод вычисления факториала
     private static double factorial(int n) {
         double result = 1;
         for (int i = 1; i <= n; i++) {
@@ -196,19 +200,9 @@ public class Main {
         return result;
     }
 
-    // Вывод истории операций
-    private static void printHistory(List<String> history) {
-        if (history.isEmpty()) {
-            System.out.println("История пуста.");
-        } else {
-            System.out.println("--- История операций ---");
-            for (int i = 0; i < history.size(); i++) {
-                System.out.println((i + 1) + ". " + history.get(i));
-            }
-        }
-    }
-
-    // Приветственное сообщение / Помощь
+    // 4. Метод вывода приветственного сообщения и инструкций
     private static void showWelcomeMessage() {
+        System.out.println("=== Инженерный Калькулятор ===");
+        System.out.println("Поддерживаемые константы: pi, e, ans (последний ответ)");
 
 
