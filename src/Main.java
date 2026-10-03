@@ -160,38 +160,38 @@ public class Main {
                     ans = res;
                     String formattedRes = formatResult(res);
                     System.out.println("Результат: " + formattedRes);
-                    
-                    // Добавление бинарной операции в историю
-                    history.add(String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes));
+
+                    // Сохранение бинарной операции в историю
+                    String expression = String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes);
+                    history.add(expression);
 
                 } catch (Exception e) {
                     System.out.println("Произошла непредвиденная ошибка: " + e.getMessage());
                 }
             }
+            System.out.println("Калькулятор закрыт. До свидания!");
         }
     }
 
-    // 1. Метод парсинга чисел и констант (pi, e, ans)
+    // Метод парсинга чисел, констант и переменной ans
     private static double parseNumber(String input) throws NumberFormatException {
         if (input.equalsIgnoreCase("pi")) return Math.PI;
         if (input.equalsIgnoreCase("e")) return Math.E;
         if (input.equalsIgnoreCase("ans")) return ans;
         
         // Заменяем запятую на точку для поддержки обоих форматов ввода
-        return Double.parseDouble(input.replace(",", "."));
+        input = input.replace(',', '.');
+        return Double.parseDouble(input);
     }
 
-    // 2. Метод красивого форматирования чисел (убирает .0 у целых)
+    // Красивое форматирование результата без лишних нулей (.0)
     private static String formatResult(double value) {
-        if (Double.isInfinite(value) || Double.isNaN(value)) {
-            return String.valueOf(value);
-        }
         DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        DecimalFormat df = new DecimalFormat("#.##########", symbols); // до 10 знаков после запятой
+        DecimalFormat df = new DecimalFormat("#.##########", symbols);
         return df.format(value);
     }
 
-    // 3. Метод вычисления факториала
+    // Подсчет факториала
     private static double factorial(int n) {
         double result = 1;
         for (int i = 1; i <= n; i++) {
@@ -200,9 +200,10 @@ public class Main {
         return result;
     }
 
-    // 4. Метод вывода приветственного сообщения и инструкций
+    // Приветственное сообщение
     private static void showWelcomeMessage() {
         System.out.println("=== Инженерный Калькулятор ===");
+        System.out.println("Поддерживаемые команды: help, history, clear, mode, exit");
         System.out.println("Поддерживаемые константы: pi, e, ans (последний ответ)");
 
 
