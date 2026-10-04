@@ -108,7 +108,7 @@ public class Main {
                                 if (num1 <= 0) {
                                     System.out.println("Ошибка! Десятичный логарифм определен только для чисел > 0.");
                                     continue;
-                                }
+                               . 
                                 res = Math.log10(num1);
                                 expression = String.format("log10(%s) = %s", formatResult(num1), formatResult(res));
                                 break;
@@ -169,41 +169,43 @@ public class Main {
                     System.out.println("Произошла непредвиденная ошибка: " + e.getMessage());
                 }
             }
-            System.out.println("Калькулятор закрыт. До свидания!");
         }
     }
 
-    // Метод парсинга чисел, констант и переменной ans
+    // Вспомогательный метод для парсинга чисел и констант
     private static double parseNumber(String input) throws NumberFormatException {
-        if (input.equalsIgnoreCase("pi")) return Math.PI;
-        if (input.equalsIgnoreCase("e")) return Math.E;
-        if (input.equalsIgnoreCase("ans")) return ans;
-        
-        // Заменяем запятую на точку для поддержки обоих форматов ввода
-        input = input.replace(',', '.');
-        return Double.parseDouble(input);
+        String cleanInput = input.toLowerCase().trim();
+
+        if (cleanInput.equals("ans")) return ans;
+        if (cleanInput.equals("pi") || cleanInput.equals("π")) return Math.PI;
+        if (cleanInput.equals("e")) return Math.E;
+
+        // Заменяем запятую на точку, чтобы поддерживать оба формата ввода
+        cleanInput = cleanInput.replace(',', '.');
+        return Double.parseDouble(cleanInput);
     }
 
-    // Красивое форматирование результата без лишних нулей (.0)
-    private static String formatResult(double value) {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        DecimalFormat df = new DecimalFormat("#.##########", symbols);
-        return df.format(value);
-    }
-
-    // Подсчет факториала
+    // Вспомогательный метод для вычисления факториала
     private static double factorial(int n) {
+        if (n == 0 || n == 1) return 1;
         double result = 1;
-        for (int i = 1; i <= n; i++) {
+        for (int i = 2; i <= n; i++) {
             result *= i;
         }
         return result;
     }
 
-    // Приветственное сообщение
-    private static void showWelcomeMessage() {
-        System.out.println("=== Инженерный Калькулятор ===");
-        System.out.println("Поддерживаемые команды: help, history, clear, mode, exit");
-        System.out.println("Поддерживаемые константы: pi, e, ans (последний ответ)");
+    // Вспомогательный метод для красивого форматирования вывода (убирает лишние .0)
+    private static String formatResult(double value) {
+        if (Double.isNaN(value)) return "NaN";
+        if (Double.isInfinite(value)) return "Infinity";
 
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
+        DecimalFormat df = new DecimalFormat("#.##########", symbols); // Округление до 10 знаков
+        return df.format(value);
+    }
+
+    // Вывод истории в консоль
+    private static void printHistory(List<String> history) {
+        if (history.isEmpty()) {
 
