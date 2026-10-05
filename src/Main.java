@@ -108,7 +108,7 @@ public class Main {
                                 if (num1 <= 0) {
                                     System.out.println("Ошибка! Десятичный логарифм определен только для чисел > 0.");
                                     continue;
-                               . 
+                                } // <-- Добавлено закрытие if
                                 res = Math.log10(num1);
                                 expression = String.format("log10(%s) = %s", formatResult(num1), formatResult(res));
                                 break;
@@ -161,7 +161,7 @@ public class Main {
                     String formattedRes = formatResult(res);
                     System.out.println("Результат: " + formattedRes);
 
-                    // Сохранение бинарной операции в историю
+                    // Добавлено сохранение бинарной операции в историю
                     String expression = String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes);
                     history.add(expression);
 
@@ -172,40 +172,37 @@ public class Main {
         }
     }
 
-    // Вспомогательный метод для парсинга чисел и констант
-    private static double parseNumber(String input) throws NumberFormatException {
-        String cleanInput = input.toLowerCase().trim();
+    // --- ДОБАВЛЕННЫЕ ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ---
 
-        if (cleanInput.equals("ans")) return ans;
-        if (cleanInput.equals("pi") || cleanInput.equals("π")) return Math.PI;
-        if (cleanInput.equals("e")) return Math.E;
-
-        // Заменяем запятую на точку, чтобы поддерживать оба формата ввода
-        cleanInput = cleanInput.replace(',', '.');
-        return Double.parseDouble(cleanInput);
+    private static void showWelcomeMessage() {
+        System.out.println("=== Консольный Калькулятор ===");
+        System.out.println("Доступные команды: help, history, clear, mode (смена Градусы/Радианы), exit");
+        System.out.println("Константы: 'pi', 'e', а также 'ans' для использования предыдущего результата.");
     }
 
-    // Вспомогательный метод для вычисления факториала
+    private static double parseNumber(String input) throws NumberFormatException {
+        if (input.equalsIgnoreCase("ans")) return ans;
+        if (input.equalsIgnoreCase("pi")) return Math.PI;
+        if (input.equalsIgnoreCase("e")) return Math.E;
+        // Заменяем запятую на точку для универсальности ввода чисел с плавающей точкой
+        return Double.parseDouble(input.replace(",", "."));
+    }
+
     private static double factorial(int n) {
-        if (n == 0 || n == 1) return 1;
         double result = 1;
-        for (int i = 2; i <= n; i++) {
+        for (int i = 1; i <= n; i++) {
             result *= i;
         }
         return result;
     }
 
-    // Вспомогательный метод для красивого форматирования вывода (убирает лишние .0)
     private static String formatResult(double value) {
-        if (Double.isNaN(value)) return "NaN";
-        if (Double.isInfinite(value)) return "Infinity";
-
+        // Убираем лишние нули после запятой (например, 5.0 превращается в 5)
         DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        DecimalFormat df = new DecimalFormat("#.##########", symbols); // Округление до 10 знаков
+        DecimalFormat df = new DecimalFormat("#.##########", symbols);
         return df.format(value);
     }
 
-    // Вывод истории в консоль
     private static void printHistory(List<String> history) {
-        if (history.isEmpty()) {
+
 
