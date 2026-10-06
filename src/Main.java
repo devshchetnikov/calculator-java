@@ -1,14 +1,12 @@
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Scanner;
+import java.util.*;
 
 public class Main {
 
-    private static double ans = 0; // Переменная для хранения последнего результата
-    private static boolean useDegrees = true; // Режим тригонометрии (true - градусы, false - радианы)
+    private static double ans = 0; // Последний результат
+    private static boolean useDegrees = true; // true - градусы, false - радианы
+    private static final Map<String, Double> variables = new HashMap<>(); // Пользовательские переменные
 
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
@@ -18,191 +16,227 @@ public class Main {
 
             while (true) {
                 try {
-                    System.out.print("\nВведите число/константу (или команду): ");
-                    String input1 = scanner.nextLine().trim();
+                    System.out.print("\nВведите выражение или команду: ");
+                    String input = scanner.nextLine().trim();
 
-                    if (input1.equalsIgnoreCase("exit")) break;
-                    if (input1.equalsIgnoreCase("history")) {
-                        printHistory(history);
-                        continue;
-                    }
-                    if (input1.equalsIgnoreCase("clear")) {
-                        history.clear();
-                        System.out.println("История успешно очищена.");
-                        continue;
-                    }
-                    if (input1.equalsIgnoreCase("help")) {
+                    if (input.isEmpty()) continue;
+                    if (input.equalsIgnoreCase("exit")) break;
+                    if (input.equalsIgnoreCase("help")) {
                         showWelcomeMessage();
                         continue;
                     }
-                    if (input1.equalsIgnoreCase("mode")) {
+                    if (input.equalsIgnoreCase("history")) {
+                        printHistory(history);
+                        continue;
+                    }
+                    if (input.equalsIgnoreCase("clear")) {
+                        history.clear();
+                        variables.clear();
+                        ans = 0;
+                        System.out.println("История, переменные и ans успешно очищены.");
+                        continue;
+                    }
+                    if (input.equalsIgnoreCase("mode")) {
                         useDegrees = !useDegrees;
                         System.out.println("Режим тригонометрии изменен! Текущий: " + (useDegrees ? "ГРАДУСЫ" : "РАДИАНЫ"));
                         continue;
                     }
-
-                    double num1;
-                    try {
-                        num1 = parseNumber(input1);
-                    } catch (NumberFormatException e) {
-                        System.out.println("Ошибка! Некорректное число или команда. Введите 'help' для справки.");
+                    if (input.equalsIgnoreCase("vars")) {
+                        printVariables();
                         continue;
                     }
 
-                    System.out.print("Выберите действие (+, -, *, /, ^, %, !, sin, cos, tan, log, log10, sqrt): ");
-                    String op = scanner.nextLine().trim().toLowerCase();
-                    if (op.equalsIgnoreCase("exit")) break;
-
-                    // Унарные операции (с одним числом)
-                    if (op.equals("sin") || op.equals("cos") || op.equals("tan") ||
-                            op.equals("sqrt") || op.equals("log") || op.equals("log10") || op.equals("!")) {
-
-                        double res = 0;
-                        String expression = "";
-
-                        switch (op) {
-                            case "!":
-                                if (num1 < 0 || num1 != Math.floor(num1)) {
-                                    System.out.println("Ошибка! Факториал определен только для целых неотрицательных чисел.");
-                                    continue;
-                                }
-                                res = factorial((int) num1);
-                                expression = String.format("%s! = %s", formatResult(num1), formatResult(res));
-                                break;
-                            case "sin":
-                                double angleSin = useDegrees ? Math.toRadians(num1) : num1;
-                                res = Math.sin(angleSin);
-                                expression = String.format("sin(%s%s) = %s", formatResult(num1), useDegrees ? "°" : " рад", formatResult(res));
-                                break;
-                            case "cos":
-                                double angleCos = useDegrees ? Math.toRadians(num1) : num1;
-                                res = Math.cos(angleCos);
-                                expression = String.format("cos(%s%s) = %s", formatResult(num1), useDegrees ? "°" : " рад", formatResult(res));
-                                break;
-                            case "tan":
-                                double angleTan = useDegrees ? Math.toRadians(num1) : num1;
-                                if (Math.abs(Math.cos(angleTan)) < 1e-10) {
-                                    System.out.println("Ошибка! Тангенс для этого угла не существует.");
-                                    continue;
-                                }
-                                res = Math.tan(angleTan);
-                                expression = String.format("tan(%s%s) = %s", formatResult(num1), useDegrees ? "°" : " рад", formatResult(res));
-                                break;
-                            case "sqrt":
-                                if (num1 < 0) {
-                                    System.out.println("Ошибка! Нельзя извлечь корень из отрицательного числа.");
-                                    continue;
-                                }
-                                res = Math.sqrt(num1);
-                                expression = String.format("sqrt(%s) = %s", formatResult(num1), formatResult(res));
-                                break;
-                            case "log":
-                                if (num1 <= 0) {
-                                    System.out.println("Ошибка! Натуральный логарифм определен только для чисел > 0.");
-                                    continue;
-                                }
-                                res = Math.log(num1);
-                                expression = String.format("log(%s) = %s", formatResult(num1), formatResult(res));
-                                break;
-                            case "log10":
-                                if (num1 <= 0) {
-                                    System.out.println("Ошибка! Десятичный логарифм определен только для чисел > 0.");
-                                    continue;
-                                } // <-- Добавлено закрытие if
-                                res = Math.log10(num1);
-                                expression = String.format("log10(%s) = %s", formatResult(num1), formatResult(res));
-                                break;
-                        }
-
-                        ans = res;
-                        System.out.println("Результат: " + formatResult(res));
-                        history.add(expression);
+                    // Обработка присвоения переменной (например: x = 5 + pi)
+                    if (input.contains("=")) {
+                        handleAssignment(input, history);
                         continue;
                     }
 
-                    System.out.print("Введите второе число или константу: ");
-                    String input2 = scanner.nextLine().trim();
-                    if (input2.equalsIgnoreCase("exit")) break;
-
-                    double num2;
-                    try {
-                        num2 = parseNumber(input2);
-                    } catch (NumberFormatException e) {
-                        System.out.println("Ошибка! Некорректное второе число.");
-                        continue;
-                    }
-
-                    double res;
-                    switch (op) {
-                        case "+": res = num1 + num2; break;
-                        case "-": res = num1 - num2; break;
-                        case "*": res = num1 * num2; break;
-                        case "/":
-                            if (Math.abs(num2) < 1e-10) {
-                                System.out.println("Ошибка! Делить на ноль нельзя.");
-                                continue;
-                            }
-                            res = num1 / num2;
-                            break;
-                        case "%":
-                            if (Math.abs(num2) < 1e-10) {
-                                System.out.println("Ошибка! Делить на ноль нельзя.");
-                                continue;
-                            }
-                            res = num1 % num2;
-                            break;
-                        case "^": res = Math.pow(num1, num2); break;
-                        default:
-                            System.out.println("Ошибка! Неверная операция.");
-                            continue;
-                    }
-
-                    ans = res;
+                    // Обычное вычисление выражения
+                    double res = evaluate(input);
                     String formattedRes = formatResult(res);
                     System.out.println("Результат: " + formattedRes);
-
-                    // Добавлено сохранение бинарной операции в историю
-                    String expression = String.format("%s %s %s = %s", formatResult(num1), op, formatResult(num2), formattedRes);
-                    history.add(expression);
+                    
+                    history.add(input + " = " + formattedRes);
+                    ans = res;
 
                 } catch (Exception e) {
-                    System.out.println("Произошла непредвиденная ошибка: " + e.getMessage());
+                    System.out.println("Ошибка! " + e.getMessage());
                 }
             }
         }
     }
 
-    // --- ДОБАВЛЕННЫЕ ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ---
+    // Логика присвоения переменной
+    private static void handleAssignment(String input, List<String> history) {
+        String[] parts = input.split("=", 2);
+        String varName = parts[0].trim().toLowerCase();
+        String expression = parts[1].trim();
 
-    private static void showWelcomeMessage() {
-        System.out.println("=== Консольный Калькулятор ===");
-        System.out.println("Доступные команды: help, history, clear, mode (смена Градусы/Радианы), exit");
-        System.out.println("Константы: 'pi', 'e', а также 'ans' для использования предыдущего результата.");
-    }
-
-    private static double parseNumber(String input) throws NumberFormatException {
-        if (input.equalsIgnoreCase("ans")) return ans;
-        if (input.equalsIgnoreCase("pi")) return Math.PI;
-        if (input.equalsIgnoreCase("e")) return Math.E;
-        // Заменяем запятую на точку для универсальности ввода чисел с плавающей точкой
-        return Double.parseDouble(input.replace(",", "."));
-    }
-
-    private static double factorial(int n) {
-        double result = 1;
-        for (int i = 1; i <= n; i++) {
-            result *= i;
+        if (!varName.matches("[a-z]+")) {
+            System.out.println("Ошибка! Имя переменной должно состоять только из латинских букв.");
+            return;
         }
-        return result;
+        if (varName.equals("pi") || varName.equals("e") || varName.equals("ans")) {
+            System.out.println("Ошибка! Нельзя перезаписывать системные константы и ans.");
+            return;
+        }
+
+        double res = evaluate(expression);
+        variables.put(varName, res);
+        String formattedRes = formatResult(res);
+        System.out.println(varName + " = " + formattedRes);
+        history.add(input + " (Результат: " + formattedRes + ")");
+        ans = res;
     }
 
-    private static String formatResult(double value) {
-        // Убираем лишние нули после запятой (например, 5.0 превращается в 5)
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        DecimalFormat df = new DecimalFormat("#.##########", symbols);
-        return df.format(value);
+    // Главный метод вычисления строкового выражения
+    public static double evaluate(String expression) {
+        List<String> tokens = tokenize(expression);
+        List<String> rpn = shuntingYard(tokens);
+        return calculateRPN(rpn);
     }
 
-    private static void printHistory(List<String> history) {
+    // Разбиение строки на токены (числа, операторы, функции, переменные)
+    private static List<String> tokenize(String expr) {
+        List<String> tokens = new ArrayList<>();
+        int i = 0;
+        while (i < expr.length()) {
+            char c = expr.charAt(i);
+            if (Character.isWhitespace(c)) {
+                i++;
+                continue;
+            }
+
+            // Числа (включая точку/запятую)
+            if (Character.isDigit(c) || c == '.') {
+                StringBuilder sb = new StringBuilder();
+                while (i < expr.length() && (Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.' || expr.charAt(i) == ',')) {
+                    char nextChar = expr.charAt(i);
+                    sb.append(nextChar == ',' ? '.' : nextChar);
+                    i++;
+                }
+                tokens.add(sb.toString());
+                continue;
+            }
+
+            // Буквы (функции, константы, переменные)
+            if (Character.isLetter(c)) {
+                StringBuilder sb = new StringBuilder();
+                while (i < expr.length() && Character.isLetterOrDigit(expr.charAt(i))) {
+                    sb.append(expr.charAt(i));
+                    i++;
+                }
+                tokens.add(sb.toString().toLowerCase());
+                continue;
+            }
+
+            // Операторы и скобки
+            if ("+-*/^%!()".indexOf(c) != -1) {
+                tokens.add(String.valueOf(c));
+                i++;
+                continue;
+            }
+
+            throw new IllegalArgumentException("Неизвестный символ в выражении: " + c);
+        }
+        return tokens;
+    }
+
+    // Алгоритм Шантинг-Ярд (Сортировочная станция Дейкстры)
+    private static List<String> shuntingYard(List<String> tokens) {
+        List<String> output = new ArrayList<>();
+        Stack<String> stack = new Stack<>();
+
+        Map<String, Integer> precedence = new HashMap<>();
+        precedence.put("+", 1); precedence.put("-", 1);
+        precedence.put("*", 2); precedence.put("/", 2); precedence.put("%", 2);
+        precedence.put("^", 3);
+
+        Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10"));
+
+        boolean expectUnary = true; // Флаг для определения унарного минуса/плюса
+
+        for (String token : tokens) {
+            if (isNumberOrVariable(token)) {
+                output.add(token);
+                expectUnary = false;
+            } else if (functions.contains(token)) {
+                stack.push(token);
+                expectUnary = false;
+            } else if (token.equals("(")) {
+                stack.push(token);
+                expectUnary = true;
+            } else if (token.equals(")")) {
+                while (!stack.isEmpty() && !stack.peek().equals("(")) {
+                    output.add(stack.pop());
+                }
+                if (stack.isEmpty()) throw new IllegalArgumentException("Пропущена открывающая скобка.");
+                stack.pop(); // Удаляем '('
+                if (!stack.isEmpty() && functions.contains(stack.peek())) {
+                    output.add(stack.pop());
+                }
+                expectUnary = false;
+            } else if (token.equals("!")) { // Факториал — постфиксный унарный оператор
+                output.add(token);
+                expectUnary = false;
+            } else if (precedence.containsKey(token)) {
+                // Обработка унарного минуса/плюса
+                if (expectUnary) {
+                    if (token.equals("-")) {
+                        stack.push("u-"); // u- означает унарный минус
+                    } else if (!token.equals("+")) {
+                        throw new IllegalArgumentException("Некорректное использование оператора " + token);
+                    }
+                } else {
+                    while (!stack.isEmpty() && precedence.containsKey(stack.peek()) &&
+                            ((isLeftAssociative(token) && precedence.get(token) <= precedence.get(stack.peek())) ||
+                             (!isLeftAssociative(token) && precedence.get(token) < precedence.get(stack.peek())))) {
+                        output.add(stack.pop());
+                    }
+                    stack.push(token);
+                }
+                expectUnary = true;
+            }
+        }
+
+        while (!stack.isEmpty()) {
+            String op = stack.pop();
+            if (op.equals("(") || op.equals(")")) throw new IllegalArgumentException("Дисбаланс скобок.");
+            output.add(op);
+        }
+
+        return output;
+    }
+
+    // Вычисление выражения из ОПЗ (RPN)
+    private static double calculateRPN(List<String> rpn) {
+        Stack<Double> stack = new Stack<>();
+
+        for (String token : rpn) {
+            if (isNumberOrVariable(token)) {
+                stack.push(resolveValue(token));
+            } else if (token.equals("u-")) {
+                if (stack.isEmpty()) throw new IllegalArgumentException("Ошибка в унарном минусе.");
+                stack.push(-stack.pop());
+            } else if (token.equals("!")) {
+                if (stack.isEmpty()) throw new IllegalArgumentException("Ошибка в факториале.");
+                double num = stack.pop();
+                if (num < 0 || num != Math.floor(num)) {
+                    throw new IllegalArgumentException("Факториал определен только для целых неотрицательных чисел.");
+                }
+                stack.push(factorial((int) num));
+            } else if (Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10").contains(token)) {
+                if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для функции " + token);
+                double num = stack.pop();
+                stack.push(applyFunction(token, num));
+            } else { // Бинарные операторы
+                if (stack.size() < 2) throw new IllegalArgumentException("Некорректное выражение (не хватает чисел).");
+                double num2 = stack.pop();
+                double num1 = stack.pop();
+                stack.push(applyBinaryOp(token, num1, num2));
+            }
+        }
+
 
 
