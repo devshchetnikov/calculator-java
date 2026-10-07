@@ -143,7 +143,7 @@ public class Main {
         return tokens;
     }
 
-    // Алгоритм Шантинг-Ярд (Сортировочная станция Дейкстры)
+    // ДОБАВЛЕНО: Алгоритм Шантинг-Ярд (Завершение метода)
     private static List<String> shuntingYard(List<String> tokens) {
         List<String> output = new ArrayList<>();
         Stack<String> stack = new Stack<>();
@@ -152,10 +152,11 @@ public class Main {
         precedence.put("+", 1); precedence.put("-", 1);
         precedence.put("*", 2); precedence.put("/", 2); precedence.put("%", 2);
         precedence.put("^", 3);
+        precedence.put("u-", 4); // Высокий приоритет унарного минуса
 
         Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10"));
 
-        boolean expectUnary = true; // Флаг для определения унарного минуса/плюса
+        boolean expectUnary = true;
 
         for (String token : tokens) {
             if (isNumberOrVariable(token)) {
@@ -172,19 +173,18 @@ public class Main {
                     output.add(stack.pop());
                 }
                 if (stack.isEmpty()) throw new IllegalArgumentException("Пропущена открывающая скобка.");
-                stack.pop(); // Удаляем '('
+                stack.pop();
                 if (!stack.isEmpty() && functions.contains(stack.peek())) {
                     output.add(stack.pop());
                 }
                 expectUnary = false;
-            } else if (token.equals("!")) { // Факториал — постфиксный унарный оператор
+            } else if (token.equals("!")) {
                 output.add(token);
                 expectUnary = false;
             } else if (precedence.containsKey(token)) {
-                // Обработка унарного минуса/плюса
                 if (expectUnary) {
                     if (token.equals("-")) {
-                        stack.push("u-"); // u- означает унарный минус
+                        stack.push("u-");
                     } else if (!token.equals("+")) {
                         throw new IllegalArgumentException("Некорректное использование оператора " + token);
                     }
@@ -202,41 +202,47 @@ public class Main {
 
         while (!stack.isEmpty()) {
             String op = stack.pop();
-            if (op.equals("(") || op.equals(")")) throw new IllegalArgumentException("Дисбаланс скобок.");
+            if (op.equals("(") || op.equals(")")) {
+                throw new IllegalArgumentException("Несогласованные скобки.");
+            }
             output.add(op);
         }
 
         return output;
     }
 
-    // Вычисление выражения из ОПЗ (RPN)
+    // ДОБАВЛЕНО: Проверка ассоциативности (степень ^ справа налево)
+    private static boolean isLeftAssociative(String token) {
+        return !token.equals("^");
+    }
+
+    // ДОБАВЛЕНО: Проверка, является ли токен числом, системной константой или переменной
+    private static boolean isNumberOrVariable(String token) {
+        if (token.equals("pi") || token.equals("e") || token.equals("ans")) return true;
+        if (variables.containsKey(token)) return true;
+        try {
+            Double.parseDouble(token);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    // ДОБАВЛЕНО: Вычисление ОПН (Обратной Польской Нотации)
     private static double calculateRPN(List<String> rpn) {
         Stack<Double> stack = new Stack<>();
 
         for (String token : rpn) {
             if (isNumberOrVariable(token)) {
-                stack.push(resolveValue(token));
+                stack.push(getVariableOrValue(token));
             } else if (token.equals("u-")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Ошибка в унарном минусе.");
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис унарного минуса.");
                 stack.push(-stack.pop());
             } else if (token.equals("!")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Ошибка в факториале.");
-                double num = stack.pop();
-                if (num < 0 || num != Math.floor(num)) {
-                    throw new IllegalArgumentException("Факториал определен только для целых неотрицательных чисел.");
-                }
-                stack.push(factorial((int) num));
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис факториала.");
+                stack.push(factorial(stack.pop()));
             } else if (Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10").contains(token)) {
                 if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для функции " + token);
-                double num = stack.pop();
-                stack.push(applyFunction(token, num));
-            } else { // Бинарные операторы
-                if (stack.size() < 2) throw new IllegalArgumentException("Некорректное выражение (не хватает чисел).");
-                double num2 = stack.pop();
-                double num1 = stack.pop();
-                stack.push(applyBinaryOp(token, num1, num2));
-            }
-        }
-
+                double arg = stack.pop();
 
 
