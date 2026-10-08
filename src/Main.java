@@ -143,7 +143,7 @@ public class Main {
         return tokens;
     }
 
-    // ДОБАВЛЕНО: Алгоритм Шантинг-Ярд (Завершение метода)
+    // Алгоритм Шантинг-Ярд (Перевод в ОПН)
     private static List<String> shuntingYard(List<String> tokens) {
         List<String> output = new ArrayList<>();
         Stack<String> stack = new Stack<>();
@@ -200,10 +200,11 @@ public class Main {
             }
         }
 
+        // ДОПИСАНО: Очистка стека в конце алгоритма
         while (!stack.isEmpty()) {
             String op = stack.pop();
             if (op.equals("(") || op.equals(")")) {
-                throw new IllegalArgumentException("Несогласованные скобки.");
+                throw new IllegalArgumentException("Несогласованные скобки в выражении.");
             }
             output.add(op);
         }
@@ -211,38 +212,40 @@ public class Main {
         return output;
     }
 
-    // ДОБАВЛЕНО: Проверка ассоциативности (степень ^ справа налево)
+    // ДОБАВЛЕНО: Проверка ассоциативности (степень ^ — правоассоциативна)
     private static boolean isLeftAssociative(String token) {
         return !token.equals("^");
     }
 
     // ДОБАВЛЕНО: Проверка, является ли токен числом, системной константой или переменной
     private static boolean isNumberOrVariable(String token) {
-        if (token.equals("pi") || token.equals("e") || token.equals("ans")) return true;
-        if (variables.containsKey(token)) return true;
-        try {
-            Double.parseDouble(token);
+        if (token.matches("\\d+(\\.\\d+)?") || token.equals("pi") || token.equals("e") || token.equals("ans")) {
             return true;
-        } catch (NumberFormatException e) {
-            return false;
         }
+        return variables.containsKey(token);
     }
 
-    // ДОБАВЛЕНО: Вычисление ОПН (Обратной Польской Нотации)
+    // ДОБАВЛЕНО: Получение значения числа/переменной
+    private static double resolveValue(String token) {
+        if (token.equals("pi")) return Math.PI;
+        if (token.equals("e")) return Math.E;
+        if (token.equals("ans")) return ans;
+        if (variables.containsKey(token)) return variables.get(token);
+        return Double.parseDouble(token);
+    }
+
+    // ДОБАВЛЕНО: Вычисление выражения по ОПН
     private static double calculateRPN(List<String> rpn) {
         Stack<Double> stack = new Stack<>();
+        Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10"));
 
         for (String token : rpn) {
             if (isNumberOrVariable(token)) {
-                stack.push(getVariableOrValue(token));
-            } else if (token.equals("u-")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис унарного минуса.");
-                stack.push(-stack.pop());
-            } else if (token.equals("!")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис факториала.");
-                stack.push(factorial(stack.pop()));
-            } else if (Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10").contains(token)) {
+                stack.push(resolveValue(token));
+            } else if (functions.contains(token)) {
                 if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для функции " + token);
                 double arg = stack.pop();
+                switch (token) {
+
 
 
