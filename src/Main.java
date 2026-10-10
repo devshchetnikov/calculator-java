@@ -108,7 +108,7 @@ public class Main {
                 continue;
             }
 
-            // Числа (включая точку/запятую)
+            // Числа
             if (Character.isDigit(c) || c == '.') {
                 StringBuilder sb = new StringBuilder();
                 while (i < expr.length() && (Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.' || expr.charAt(i) == ',')) {
@@ -200,46 +200,48 @@ public class Main {
             }
         }
 
-        // ДОПИСАНО: Очистка стека в конце алгоритма
+        // ИСПРАВЛЕНО: Закрыта скобка и очищен стек
         while (!stack.isEmpty()) {
-            String op = stack.pop();
-            if (op.equals("(") || op.equals(")")) {
-                throw new IllegalArgumentException("Несогласованные скобки в выражении.");
-            }
-            output.add(op);
+            String top = stack.pop();
+            if (top.equals("(") || top.equals(")")) throw new IllegalArgumentException("Дисбаланс скобок.");
+            output.add(top);
         }
         return output;
     }
 
-    // Вычисление выражения в Обратной Польской Нотации (ОПН)
+    // Вычисление выражения в ОПН
     private static double calculateRPN(List<String> rpn) {
         Stack<Double> stack = new Stack<>();
-        Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10"));
 
         for (String token : rpn) {
             if (isNumber(token)) {
                 stack.push(Double.parseDouble(token));
             } else if (isVariableOrConstant(token)) {
-                stack.push(resolveVariable(token));
-            } else if (functions.contains(token)) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для функции " + token);
-                double arg = stack.pop();
-                stack.push(executeFunction(token, arg));
+                stack.push(getVariableOrConstantValue(token));
             } else if (token.equals("u-")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для унарного минуса");
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверное выражение.");
                 stack.push(-stack.pop());
             } else if (token.equals("!")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для факториала");
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверное выражение.");
                 stack.push(factorial(stack.pop()));
-            } else {
-                if (stack.size() < 2) throw new IllegalArgumentException("Некорректное выражение (недостаточно операндов)");
+            } else if (Arrays.asList("+", "-", "*", "/", "^", "%").contains(token)) {
+                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно операндов для " + token);
                 double b = stack.pop();
                 double a = stack.pop();
-                stack.push(executeOperator(token, a, b));
-            }
-        }
+                switch (token) {
+                    case "+": stack.push(a + b); break;
+                    case "-": stack.push(a - b); break;
+                    case "*": stack.push(a * b); break;
+                    case "/": 
+                        if (b == 0) throw new ArithmeticException("Деление на ноль!");
+                        stack.push(a / b); 
+                        break;
+                    case "%": stack.push(a % b); break;
+                    case "^": stack.push(Math.pow(a, b)); break;
+                }
+            } else {
+                // Вычисление функций
 
-        if (stack.size() != 1) {
 
 
 
