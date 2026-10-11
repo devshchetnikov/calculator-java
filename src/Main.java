@@ -4,14 +4,13 @@ import java.util.*;
 
 public class Main {
 
-    private static double ans = 0; // Последний результат
-    private static boolean useDegrees = true; // true - градусы, false - радианы
-    private static final Map<String, Double> variables = new HashMap<>(); // Пользовательские переменные
+    private static double ans = 0; 
+    private static boolean useDegrees = true; 
+    private static final Map<String, Double> variables = new HashMap<>(); 
 
     public static void main(String[] args) {
         try (Scanner scanner = new Scanner(System.in)) {
             List<String> history = new ArrayList<>();
-
             showWelcomeMessage();
 
             while (true) {
@@ -46,13 +45,11 @@ public class Main {
                         continue;
                     }
 
-                    // Обработка присвоения переменной (например: x = 5 + pi)
                     if (input.contains("=")) {
                         handleAssignment(input, history);
                         continue;
                     }
 
-                    // Обычное вычисление выражения
                     double res = evaluate(input);
                     String formattedRes = formatResult(res);
                     System.out.println("Результат: " + formattedRes);
@@ -67,7 +64,6 @@ public class Main {
         }
     }
 
-    // Логика присвоения переменной
     private static void handleAssignment(String input, List<String> history) {
         String[] parts = input.split("=", 2);
         String varName = parts[0].trim().toLowerCase();
@@ -90,16 +86,15 @@ public class Main {
         ans = res;
     }
 
-    // Главный метод вычисления строкового выражения
     public static double evaluate(String expression) {
         List<String> tokens = tokenize(expression);
         List<String> rpn = shuntingYard(tokens);
         return calculateRPN(rpn);
     }
 
-    // Разбиение строки на токены (числа, операторы, функции, переменные)
+    // ТФИЧА: Токенизатор теперь автоматически вставляет "*", где это необходимо (неявное умножение)
     private static List<String> tokenize(String expr) {
-        List<String> tokens = new ArrayList<>();
+        List<String> rawTokens = new ArrayList<>();
         int i = 0;
         while (i < expr.length()) {
             char c = expr.charAt(i);
@@ -111,12 +106,11 @@ public class Main {
             // Числа
             if (Character.isDigit(c) || c == '.') {
                 StringBuilder sb = new StringBuilder();
-                while (i < expr.length() && (Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.' || expr.charAt(i) == ',')) {
-                    char nextChar = expr.charAt(i);
-                    sb.append(nextChar == ',' ? '.' : nextChar);
+                while (i < expr.length() && (Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.')) {
+                    sb.append(expr.charAt(i));
                     i++;
                 }
-                tokens.add(sb.toString());
+                rawTokens.add(sb.toString());
                 continue;
             }
 
@@ -127,23 +121,51 @@ public class Main {
                     sb.append(expr.charAt(i));
                     i++;
                 }
-                tokens.add(sb.toString().toLowerCase());
+                rawTokens.add(sb.toString().toLowerCase());
                 continue;
             }
 
-            // Операторы и скобки
-            if ("+-*/^%!()".indexOf(c) != -1) {
-                tokens.add(String.valueOf(c));
+            // Операторы, скобки и ЗАПЯТАЯ
+            if ("+-*/^%!(),".indexOf(c) != -1) {
+                rawTokens.add(String.valueOf(c));
                 i++;
                 continue;
             }
 
             throw new IllegalArgumentException("Неизвестный символ в выражении: " + c);
         }
+
+        // Вставка неявного умножения
+        List<String> tokens = new ArrayList<>();
+        for (int k = 0; k < rawTokens.size(); k++) {
+            String current = rawTokens.get(k);
+            tokens.add(current);
+
+            if (k + 1 < rawTokens.size()) {
+                String next = rawTokens.get(k + 1);
+
+                // Случаи для неявного умножения:
+                // 1. Число перед переменной/функцией (2pi, 3sin(x)) или перед скобкой (5(x+1))
+                // 2. Переменная/константа перед открывающей скобкой (pi(a+b)) или перед другой переменной
+                // 3. Закрывающая скобка перед числом, переменной или открывающей скобкой (x+1)(y+2)
+                boolean isCurrNumOrVar = isNumberOrVariable(current) || current.equals(")");
+                boolean isNextNumOrVarOrBracket = isNumberOrVariable(next) || next.equals("(") || new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "min", "max", "log10")).contains(next);
+
+                if (current.equals(")") && next.equals("(")) {
+                    tokens.add("*");
+                } else if (isNumber(current) && (isVariableOrConstant(next) || next.equals("("))) {
+                    tokens.add("*");
+                } else if (isVariableOrConstant(current) && (next.equals("(") || isVariableOrConstant(next))) {
+                    tokens.add("*");
+                } else if (current.equals(")") && (isNumber(next) || isVariableOrConstant(next))) {
+                    tokens.add("*");
+                }
+            }
+        }
         return tokens;
     }
 
-    // Алгоритм Шантинг-Ярд (Перевод в ОПН)
+    // ФИЧА: Изменен под поддержку функций с несколькими аргументами (обработка запятой)
     private static List<String> shuntingYard(List<String> tokens) {
         List<String> output = new ArrayList<>();
         Stack<String> stack = new Stack<>();
@@ -152,9 +174,9 @@ public class Main {
         precedence.put("+", 1); precedence.put("-", 1);
         precedence.put("*", 2); precedence.put("/", 2); precedence.put("%", 2);
         precedence.put("^", 3);
-        precedence.put("u-", 4); // Высокий приоритет унарного минуса
+        precedence.put("u-", 4);
 
-        Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10"));
+        Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "min", "max"));
 
         boolean expectUnary = true;
 
@@ -165,6 +187,15 @@ public class Main {
             } else if (functions.contains(token)) {
                 stack.push(token);
                 expectUnary = false;
+            } else if (token.equals(",")) {
+                // Запятая выталкивает операторы до ближайшей открывающей скобки
+                while (!stack.isEmpty() && !stack.peek().equals("(")) {
+                    output.add(stack.pop());
+                }
+                if (stack.isEmpty()) {
+                    throw new IllegalArgumentException("Разделитель аргументов ',' использован вне скобок.");
+                }
+                expectUnary = true;
             } else if (token.equals("(")) {
                 stack.push(token);
                 expectUnary = true;
@@ -173,7 +204,8 @@ public class Main {
                     output.add(stack.pop());
                 }
                 if (stack.isEmpty()) throw new IllegalArgumentException("Пропущена открывающая скобка.");
-                stack.pop();
+                stack.pop(); // Удаляем "("
+                
                 if (!stack.isEmpty() && functions.contains(stack.peek())) {
                     output.add(stack.pop());
                 }
@@ -200,47 +232,9 @@ public class Main {
             }
         }
 
-        // ИСПРАВЛЕНО: Закрыта скобка и очищен стек
         while (!stack.isEmpty()) {
-            String top = stack.pop();
-            if (top.equals("(") || top.equals(")")) throw new IllegalArgumentException("Дисбаланс скобок.");
-            output.add(top);
-        }
-        return output;
-    }
-
-    // Вычисление выражения в ОПН
-    private static double calculateRPN(List<String> rpn) {
-        Stack<Double> stack = new Stack<>();
-
-        for (String token : rpn) {
-            if (isNumber(token)) {
-                stack.push(Double.parseDouble(token));
-            } else if (isVariableOrConstant(token)) {
-                stack.push(getVariableOrConstantValue(token));
-            } else if (token.equals("u-")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверное выражение.");
-                stack.push(-stack.pop());
-            } else if (token.equals("!")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверное выражение.");
-                stack.push(factorial(stack.pop()));
-            } else if (Arrays.asList("+", "-", "*", "/", "^", "%").contains(token)) {
-                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно операндов для " + token);
-                double b = stack.pop();
-                double a = stack.pop();
-                switch (token) {
-                    case "+": stack.push(a + b); break;
-                    case "-": stack.push(a - b); break;
-                    case "*": stack.push(a * b); break;
-                    case "/": 
-                        if (b == 0) throw new ArithmeticException("Деление на ноль!");
-                        stack.push(a / b); 
-                        break;
-                    case "%": stack.push(a % b); break;
-                    case "^": stack.push(Math.pow(a, b)); break;
-                }
-            } else {
-                // Вычисление функций
+            String token = stack.pop();
+            if (token.equals("(") || token.equals(")")) {
 
 
 
