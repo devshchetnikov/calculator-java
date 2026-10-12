@@ -92,7 +92,6 @@ public class Main {
         return calculateRPN(rpn);
     }
 
-    // ТФИЧА: Токенизатор теперь автоматически вставляет "*", где это необходимо (неявное умножение)
     private static List<String> tokenize(String expr) {
         List<String> rawTokens = new ArrayList<>();
         int i = 0;
@@ -103,7 +102,6 @@ public class Main {
                 continue;
             }
 
-            // Числа
             if (Character.isDigit(c) || c == '.') {
                 StringBuilder sb = new StringBuilder();
                 while (i < expr.length() && (Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.')) {
@@ -114,7 +112,6 @@ public class Main {
                 continue;
             }
 
-            // Буквы (функции, константы, переменные)
             if (Character.isLetter(c)) {
                 StringBuilder sb = new StringBuilder();
                 while (i < expr.length() && Character.isLetterOrDigit(expr.charAt(i))) {
@@ -125,7 +122,6 @@ public class Main {
                 continue;
             }
 
-            // Операторы, скобки и ЗАПЯТАЯ
             if ("+-*/^%!(),".indexOf(c) != -1) {
                 rawTokens.add(String.valueOf(c));
                 i++;
@@ -135,7 +131,6 @@ public class Main {
             throw new IllegalArgumentException("Неизвестный символ в выражении: " + c);
         }
 
-        // Вставка неявного умножения
         List<String> tokens = new ArrayList<>();
         for (int k = 0; k < rawTokens.size(); k++) {
             String current = rawTokens.get(k);
@@ -143,14 +138,6 @@ public class Main {
 
             if (k + 1 < rawTokens.size()) {
                 String next = rawTokens.get(k + 1);
-
-                // Случаи для неявного умножения:
-                // 1. Число перед переменной/функцией (2pi, 3sin(x)) или перед скобкой (5(x+1))
-                // 2. Переменная/константа перед открывающей скобкой (pi(a+b)) или перед другой переменной
-                // 3. Закрывающая скобка перед числом, переменной или открывающей скобкой (x+1)(y+2)
-                boolean isCurrNumOrVar = isNumberOrVariable(current) || current.equals(")");
-                boolean isNextNumOrVarOrBracket = isNumberOrVariable(next) || next.equals("(") || new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "min", "max", "log10")).contains(next);
-
                 if (current.equals(")") && next.equals("(")) {
                     tokens.add("*");
                 } else if (isNumber(current) && (isVariableOrConstant(next) || next.equals("("))) {
@@ -165,7 +152,6 @@ public class Main {
         return tokens;
     }
 
-    // ФИЧА: Изменен под поддержку функций с несколькими аргументами (обработка запятой)
     private static List<String> shuntingYard(List<String> tokens) {
         List<String> output = new ArrayList<>();
         Stack<String> stack = new Stack<>();
@@ -174,10 +160,10 @@ public class Main {
         precedence.put("+", 1); precedence.put("-", 1);
         precedence.put("*", 2); precedence.put("/", 2); precedence.put("%", 2);
         precedence.put("^", 3);
-        precedence.put("u-", 4);
+        precedence.put("u-", 4); // Унарный минус
+        precedence.put("!", 5);  // Факториал
 
         Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "min", "max"));
-
         boolean expectUnary = true;
 
         for (String token : tokens) {
@@ -188,12 +174,11 @@ public class Main {
                 stack.push(token);
                 expectUnary = false;
             } else if (token.equals(",")) {
-                // Запятая выталкивает операторы до ближайшей открывающей скобки
                 while (!stack.isEmpty() && !stack.peek().equals("(")) {
                     output.add(stack.pop());
                 }
                 if (stack.isEmpty()) {
-                    throw new IllegalArgumentException("Разделитель аргументов ',' использован вне скобок.");
+                    throw new IllegalArgumentException("Разделитель ',' использован вне скобок.");
                 }
                 expectUnary = true;
             } else if (token.equals("(")) {
@@ -203,38 +188,69 @@ public class Main {
                 while (!stack.isEmpty() && !stack.peek().equals("(")) {
                     output.add(stack.pop());
                 }
-                if (stack.isEmpty()) throw new IllegalArgumentException("Пропущена открывающая скобка.");
+                if (stack.isEmpty()) {
+                    throw new IllegalArgumentException("Пропущена открывающая скобка.");
+                }
                 stack.pop(); // Удаляем "("
-                
                 if (!stack.isEmpty() && functions.contains(stack.peek())) {
                     output.add(stack.pop());
                 }
                 expectUnary = false;
-            } else if (token.equals("!")) {
-                output.add(token);
-                expectUnary = false;
-            } else if (precedence.containsKey(token)) {
-                if (expectUnary) {
-                    if (token.equals("-")) {
-                        stack.push("u-");
-                    } else if (!token.equals("+")) {
-                        throw new IllegalArgumentException("Некорректное использование оператора " + token);
-                    }
-                } else {
-                    while (!stack.isEmpty() && precedence.containsKey(stack.peek()) &&
-                            ((isLeftAssociative(token) && precedence.get(token) <= precedence.get(stack.peek())) ||
-                             (!isLeftAssociative(token) && precedence.get(token) < precedence.get(stack.peek())))) {
-                        output.add(stack.pop());
-                    }
-                    stack.push(token);
+            } else { // Операторы
+                if (expectUnary && token.equals("-")) {
+                    token = "u-";
                 }
+                while (!stack.isEmpty() && !stack.peek().equals("(") && 
+                       precedence.getOrDefault(stack.peek(), 0) >= precedence.getOrDefault(token, 0)) {
+                    output.add(stack.pop());
+                }
+                stack.push(token);
                 expectUnary = true;
             }
         }
 
         while (!stack.isEmpty()) {
-            String token = stack.pop();
-            if (token.equals("(") || token.equals(")")) {
+            String top = stack.pop();
+            if (top.equals("(") || top.equals(")")) {
+                throw new IllegalArgumentException("Несогласованные скобки.");
+            }
+            output.add(top);
+        }
+
+        return output;
+    }
+
+    private static double calculateRPN(List<String> rpn) {
+        Stack<Double> stack = new Stack<>();
+
+        for (String token : rpn) {
+            if (isNumber(token)) {
+                stack.push(Double.parseDouble(token));
+            } else if (isVariableOrConstant(token)) {
+                stack.push(getVariableOrConstantValue(token));
+            } else if (token.equals("u-")) {
+                stack.push(-stack.pop());
+            } else if (token.equals("!")) {
+                stack.push(factorial(stack.pop()));
+            } else if (Arrays.asList("+", "-", "*", "/", "%", "^").contains(token)) {
+                double b = stack.pop();
+                double a = stack.pop();
+                switch (token) {
+                    case "+": stack.push(a + b); break;
+                    case "-": stack.push(a - b); break;
+                    case "*": stack.push(a * b); break;
+                    case "/": 
+                        if (b == 0) throw new ArithmeticException("Деление на ноль.");
+                        stack.push(a / b); 
+                        break;
+                    case "%": stack.push(a % b); break;
+                    case "^": stack.push(Math.pow(a, b)); break;
+                }
+            } else { // Функции
+                if (token.equals("min") || token.equals("max")) {
+                    double b = stack.pop();
+                    double a = stack.pop();
+
 
 
 
