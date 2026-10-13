@@ -210,11 +210,11 @@ public class Main {
         }
 
         while (!stack.isEmpty()) {
-            String top = stack.pop();
-            if (top.equals("(") || top.equals(")")) {
-                throw new IllegalArgumentException("Несогласованные скобки.");
+            String op = stack.pop();
+            if (op.equals("(") || op.equals(")")) {
+                throw new IllegalArgumentException("Несогласованные скобки в выражении.");
             }
-            output.add(top);
+            output.add(op);
         }
 
         return output;
@@ -229,27 +229,23 @@ public class Main {
             } else if (isVariableOrConstant(token)) {
                 stack.push(getVariableOrConstantValue(token));
             } else if (token.equals("u-")) {
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис унарного минуса.");
                 stack.push(-stack.pop());
             } else if (token.equals("!")) {
-                stack.push(factorial(stack.pop()));
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис факториала.");
+                double val = stack.pop();
+                if (val < 0 || val != Math.floor(val)) throw new IllegalArgumentException("Факториал определен только для целых неотрицательных чисел.");
+                stack.push(factorial((int) val));
             } else if (Arrays.asList("+", "-", "*", "/", "%", "^").contains(token)) {
+                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно операндов для оператора " + token);
                 double b = stack.pop();
                 double a = stack.pop();
                 switch (token) {
-                    case "+": stack.push(a + b); break;
-                    case "-": stack.push(a - b); break;
-                    case "*": stack.push(a * b); break;
-                    case "/": 
-                        if (b == 0) throw new ArithmeticException("Деление на ноль.");
-                        stack.push(a / b); 
-                        break;
-                    case "%": stack.push(a % b); break;
-                    case "^": stack.push(Math.pow(a, b)); break;
-                }
-            } else { // Функции
-                if (token.equals("min") || token.equals("max")) {
-                    double b = stack.pop();
-                    double a = stack.pop();
+                    case "+" -> stack.push(a + b);
+                    case "-" -> stack.push(a - b);
+                    case "*" -> stack.push(a * b);
+                    case "/" -> {
+
 
 
 
