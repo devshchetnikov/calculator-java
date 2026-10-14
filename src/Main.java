@@ -160,8 +160,8 @@ public class Main {
         precedence.put("+", 1); precedence.put("-", 1);
         precedence.put("*", 2); precedence.put("/", 2); precedence.put("%", 2);
         precedence.put("^", 3);
-        precedence.put("u-", 4); // Унарный минус
-        precedence.put("!", 5);  // Факториал
+        precedence.put("u-", 4); 
+        precedence.put("!", 5);  
 
         Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "min", "max"));
         boolean expectUnary = true;
@@ -191,17 +191,19 @@ public class Main {
                 if (stack.isEmpty()) {
                     throw new IllegalArgumentException("Пропущена открывающая скобка.");
                 }
-                stack.pop(); // Удаляем "("
+                stack.pop(); 
                 if (!stack.isEmpty() && functions.contains(stack.peek())) {
                     output.add(stack.pop());
                 }
                 expectUnary = false;
-            } else { // Операторы
+            } else { 
                 if (expectUnary && token.equals("-")) {
                     token = "u-";
                 }
+                // Изменено условие для правоассоциативного оператора степени '^'
                 while (!stack.isEmpty() && !stack.peek().equals("(") && 
-                       precedence.getOrDefault(stack.peek(), 0) >= precedence.getOrDefault(token, 0)) {
+                       (precedence.getOrDefault(stack.peek(), 0) > precedence.getOrDefault(token, 0) ||
+                       (precedence.getOrDefault(stack.peek(), 0).equals(precedence.getOrDefault(token, 0)) && !token.equals("^")))) {
                     output.add(stack.pop());
                 }
                 stack.push(token);
@@ -222,32 +224,23 @@ public class Main {
 
     private static double calculateRPN(List<String> rpn) {
         Stack<Double> stack = new Stack<>();
+        Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "min", "max"));
 
         for (String token : rpn) {
-            if (isNumber(token)) {
-                stack.push(Double.parseDouble(token));
-            } else if (isVariableOrConstant(token)) {
+            if (isNumberOrVariable(token)) {
                 stack.push(getVariableOrConstantValue(token));
-            } else if (token.equals("u-")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис унарного минуса.");
-                stack.push(-stack.pop());
-            } else if (token.equals("!")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис факториала.");
-                double val = stack.pop();
-                if (val < 0 || val != Math.floor(val)) throw new IllegalArgumentException("Факториал определен только для целых неотрицательных чисел.");
-                stack.push(factorial((int) val));
-            } else if (Arrays.asList("+", "-", "*", "/", "%", "^").contains(token)) {
-                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно операндов для оператора " + token);
-                double b = stack.pop();
-                double a = stack.pop();
-                switch (token) {
-                    case "+" -> stack.push(a + b);
-                    case "-" -> stack.push(a - b);
-                    case "*" -> stack.push(a * b);
-                    case "/" -> {
-
-
-
-
-
-
+            } else if (functions.contains(token)) {
+                if (token.equals("min") || token.equals("max")) {
+                    if (stack.size() < 2) throw new IllegalArgumentException("Функции min/max требуют два аргумента.");
+                    double b = stack.pop();
+                    double a = stack.pop();
+                    stack.push(token.equals("min") ? Math.min(a, b) : Math.max(a, b));
+                } else {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для функции: " + token);
+                    double val = stack.pop();
+                    stack.push(applyFunction(token, val));
+                }
+            } else {
+                if (token.equals("u-")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Ошибка унарного минуса.");
+                    stack.push(-stack.pop());
