@@ -200,10 +200,11 @@ public class Main {
                 if (expectUnary && token.equals("-")) {
                     token = "u-";
                 }
-                // Изменено условие для правоассоциативного оператора степени '^'
+                
+                // --- ЗДЕСЬ БЫЛ ОБРЫВ КОДА. Дописано корректное условие Shunting-Yard ---
                 while (!stack.isEmpty() && !stack.peek().equals("(") && 
                        (precedence.getOrDefault(stack.peek(), 0) > precedence.getOrDefault(token, 0) ||
-                       (precedence.getOrDefault(stack.peek(), 0).equals(precedence.getOrDefault(token, 0)) && !token.equals("^")))) {
+                       (precedence.getOrDefault(stack.peek(), 0).equals(preprecedence.getOrDefault(token, 0)) && !token.equals("^")))) {
                     output.add(stack.pop());
                 }
                 stack.push(token);
@@ -212,35 +213,37 @@ public class Main {
         }
 
         while (!stack.isEmpty()) {
-            String op = stack.pop();
-            if (op.equals("(") || op.equals(")")) {
+            String top = stack.pop();
+            if (top.equals("(") || top.equals(")")) {
                 throw new IllegalArgumentException("Несогласованные скобки в выражении.");
             }
-            output.add(op);
+            output.add(top);
         }
 
         return output;
     }
+
+    // --- ДОБАВЛЕННЫЕ МЕТОДЫ ДЛЯ ВЫЧИСЛЕНИЯ ОПЗ И ПОДДЕРЖКИ РАБОТЫ ---
 
     private static double calculateRPN(List<String> rpn) {
         Stack<Double> stack = new Stack<>();
         Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "min", "max"));
 
         for (String token : rpn) {
-            if (isNumberOrVariable(token)) {
+            if (isNumber(token)) {
+                stack.push(Double.parseDouble(token));
+            } else if (isVariableOrConstant(token)) {
                 stack.push(getVariableOrConstantValue(token));
+            } else if (token.equals("u-")) {
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис унарного минуса.");
+                stack.push(-stack.pop());
+            } else if (token.equals("!")) {
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис факториала.");
+                stack.push(factorial(stack.pop()));
             } else if (functions.contains(token)) {
-                if (token.equals("min") || token.equals("max")) {
-                    if (stack.size() < 2) throw new IllegalArgumentException("Функции min/max требуют два аргумента.");
-                    double b = stack.pop();
-                    double a = stack.pop();
-                    stack.push(token.equals("min") ? Math.min(a, b) : Math.max(a, b));
-                } else {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для функции: " + token);
-                    double val = stack.pop();
-                    stack.push(applyFunction(token, val));
-                }
+                executeFunction(token, stack);
             } else {
-                if (token.equals("u-")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("Ошибка унарного минуса.");
-                    stack.push(-stack.pop());
+                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно операндов для операции: " + token);
+                double b = stack.pop();
+                double a = stack.pop();
+
