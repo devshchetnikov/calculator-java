@@ -201,14 +201,13 @@ public class Main {
                     token = "u-";
                 }
                 
-                // --- ЗДЕСЬ БЫЛ ОБРЫВ КОДА. Дописано корректное условие Shunting-Yard ---
                 while (!stack.isEmpty() && !stack.peek().equals("(") && 
                        (precedence.getOrDefault(stack.peek(), 0) > precedence.getOrDefault(token, 0) ||
-                       (precedence.getOrDefault(stack.peek(), 0).equals(preprecedence.getOrDefault(token, 0)) && !token.equals("^")))) {
+                       (precedence.getOrDefault(stack.peek(), 0) == precedence.getOrDefault(token, 0) && !token.equals("^")))) {
                     output.add(stack.pop());
                 }
                 stack.push(token);
-                expectUnary = true;
+                expectUnary = !token.equals("!"); // после факториала ожидается бинарный оператор
             }
         }
 
@@ -223,8 +222,6 @@ public class Main {
         return output;
     }
 
-    // --- ДОБАВЛЕННЫЕ МЕТОДЫ ДЛЯ ВЫЧИСЛЕНИЯ ОПЗ И ПОДДЕРЖКИ РАБОТЫ ---
-
     private static double calculateRPN(List<String> rpn) {
         Stack<Double> stack = new Stack<>();
         Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "min", "max"));
@@ -234,16 +231,19 @@ public class Main {
                 stack.push(Double.parseDouble(token));
             } else if (isVariableOrConstant(token)) {
                 stack.push(getVariableOrConstantValue(token));
-            } else if (token.equals("u-")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис унарного минуса.");
-                stack.push(-stack.pop());
-            } else if (token.equals("!")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис факториала.");
-                stack.push(factorial(stack.pop()));
             } else if (functions.contains(token)) {
-                executeFunction(token, stack);
+                if (token.equals("min") || token.equals("max")) {
+                    if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно аргументов для функции " + token);
+                    double b = stack.pop();
+                    double a = stack.pop();
+                    stack.push(token.equals("min") ? Math.min(a, b) : Math.max(a, b));
+                } else {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для функции " + token);
+                    double val = stack.pop();
+                    stack.push(applyFunction(token, val));
+                }
             } else {
-                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно операндов для операции: " + token);
-                double b = stack.pop();
-                double a = stack.pop();
+                if (token.equals("u-")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Ошибка унарного минуса.");
+
 
