@@ -207,41 +207,47 @@ public class Main {
                     output.add(stack.pop());
                 }
                 stack.push(token);
-                expectUnary = token.equals("u-") || !token.equals("!");
+                expectUnary = true; 
             }
         }
 
         while (!stack.isEmpty()) {
             String top = stack.pop();
             if (top.equals("(") || top.equals(")")) {
-                throw new IllegalArgumentException("Несогласованные скобки в выражении.");
+                throw new IllegalArgumentException("Дисбаланс скобок в выражении.");
             }
             output.add(top);
         }
+
         return output;
     }
 
     private static double calculateRPN(List<String> rpn) {
         Stack<Double> stack = new Stack<>();
+
         for (String token : rpn) {
             if (isNumber(token)) {
                 stack.push(Double.parseDouble(token));
             } else if (isVariableOrConstant(token)) {
                 stack.push(getVariableOrConstantValue(token));
             } else if (token.equals("u-")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверное использование унарного минуса.");
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис унарного минуса.");
                 stack.push(-stack.pop());
             } else if (token.equals("!")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверное использование факториала.");
+                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис факториала.");
                 stack.push(factorial(stack.pop()));
-            } else if (isUnaryFunction(token)) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Недостаточно аргументов для функции " + token);
-                stack.push(executeUnaryFunction(token, stack.pop()));
-            } else if (token.equals("min") || token.equals("max")) {
-                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно аргументов для функции " + token);
+            } else if (token.equals("+") || token.equals("-") || token.equals("*") || 
+                       token.equals("/") || token.equals("%") || token.equals("^") || 
+                       token.equals("min") || token.equals("max")) {
+                
+                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно аргументов для бинарного оператора/функции: " + token);
                 double b = stack.pop();
                 double a = stack.pop();
-                stack.push(token.equals("min") ? Math.min(a, b) : Math.max(a, b));
+
+                switch (token) {
+                    case "+": stack.push(a + b); 
+                        break;
+
 
 
 
