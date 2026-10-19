@@ -207,14 +207,14 @@ public class Main {
                     output.add(stack.pop());
                 }
                 stack.push(token);
-                expectUnary = true; 
+                expectUnary = true;
             }
         }
 
         while (!stack.isEmpty()) {
             String top = stack.pop();
             if (top.equals("(") || top.equals(")")) {
-                throw new IllegalArgumentException("Дисбаланс скобок в выражении.");
+                throw new IllegalArgumentException("Несогласованные скобки.");
             }
             output.add(top);
         }
@@ -230,23 +230,25 @@ public class Main {
                 stack.push(Double.parseDouble(token));
             } else if (isVariableOrConstant(token)) {
                 stack.push(getVariableOrConstantValue(token));
-            } else if (token.equals("u-")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис унарного минуса.");
-                stack.push(-stack.pop());
-            } else if (token.equals("!")) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Неверный синтаксис факториала.");
-                stack.push(factorial(stack.pop()));
-            } else if (token.equals("+") || token.equals("-") || token.equals("*") || 
-                       token.equals("/") || token.equals("%") || token.equals("^") || 
-                       token.equals("min") || token.equals("max")) {
-                
-                if (stack.size() < 2) throw new IllegalArgumentException("Недостаточно аргументов для бинарного оператора/функции: " + token);
-                double b = stack.pop();
-                double a = stack.pop();
+            } else {
+                if (token.equals("u-")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Неверное выражение.");
+                    stack.push(-stack.pop());
+                    continue;
+                }
+                if (token.equals("!")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Неверное выражение.");
+                    double val = stack.pop();
+                    if (val < 0 || val != Math.floor(val)) throw new IllegalArgumentException("Факториал определен только для целых неотрицательных чисел.");
+                    stack.push(factorial((int) val));
+                    continue;
+                }
 
-                switch (token) {
-                    case "+": stack.push(a + b); 
-                        break;
+                // Бинарные операторы и функции
+                if (token.equals("min") || token.equals("max")) {
+                    if (stack.size() < 2) throw new IllegalArgumentException("Функции min/max требуют два аргумента.");
+                    double b = stack.pop();
+                    double a = stack.pop();
 
 
 
