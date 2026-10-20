@@ -1,6 +1,7 @@
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.*;
+import java.math.BigInteger;
 
 public class Main {
 
@@ -244,12 +245,149 @@ public class Main {
                     continue;
                 }
 
-                // Бинарные операторы и функции
                 if (token.equals("min") || token.equals("max")) {
                     if (stack.size() < 2) throw new IllegalArgumentException("Функции min/max требуют два аргумента.");
                     double b = stack.pop();
                     double a = stack.pop();
+                    if (token.equals("min")) {
+                        stack.push(Math.min(a, b));
+                    } else {
+                        stack.push(Math.max(a, b));
+                    }
+                    continue;
+                }
 
+                if (token.equals("sin") || token.equals("cos") || token.equals("tan")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Функция " + token + " требует аргумент.");
+                    double val = stack.pop();
+                    if (useDegrees) {
+                        val = Math.toRadians(val);
+                    }
+                    double result;
+                    switch (token) {
+                        case "sin": result = Math.sin(val); break;
+                        case "cos": result = Math.cos(val); break;
+                        case "tan": 
+                            double cosVal = Math.cos(val);
+                            if (Math.abs(cosVal) < 1e-12) {
+                                throw new IllegalArgumentException("Тангенс не определен для этого угла.");
+                            }
+                            result = Math.tan(val); 
+                            break;
+                        default: throw new IllegalStateException("Unexpected value: " + token);
+                    }
+                    stack.push(result);
+                    continue;
+                }
+
+                if (stack.size() < 2) throw new IllegalArgumentException("Неверное выражение.");
+                double b = stack.pop();
+                double a = stack.pop();
+
+                switch (token) {
+                    case "+": stack.push(a + b); break;
+                    case "-": stack.push(a - b); break;
+                    case "*": stack.push(a * b); break;
+                    case "/": 
+                        if (b == 0) throw new IllegalArgumentException("Деление на ноль."); 
+                        stack.push(a / b); 
+                        break;
+                    case "%": 
+                        if (b == 0) throw new IllegalArgumentException("Деление на ноль.");
+                        double res = a % b;
+                        if (res < 0) {
+                            res += Math.abs(b);
+                        }
+                        stack.push(res); 
+                        break;
+                    case "^": stack.push(Math.pow(a, b)); break;
+                    default: throw new IllegalArgumentException("Неизвестный оператор: " + token);
+                }
+            }
+        }
+
+        if (stack.size() != 1) throw new IllegalArgumentException("Неверное выражение.");
+        return stack.pop();
+    }
+
+    private static boolean isNumber(String s) {
+        try {
+            Double.parseDouble(s);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private static boolean isVariableOrConstant(String s) {
+        return variables.containsKey(s) || s.equals("pi") || s.equals("e") || s.equals("ans");
+    }
+
+    private static boolean isNumberOrVariable(String s) {
+        return isNumber(s) || isVariableOrConstant(s);
+    }
+
+    private static double getVariableOrConstantValue(String s) {
+        if (s.equals("pi")) return Math.PI;
+        if (s.equals("e")) return Math.E;
+        if (s.equals("ans")) return ans;
+        return variables.get(s);
+    }
+
+    private static double factorial(int n) {
+        BigInteger result = BigInteger.ONE;
+        for (int i = 2; i <= n; i++) {
+            result = result.multiply(BigInteger.valueOf(i));
+        }
+        return result.doubleValue();
+    }
+
+    private static String formatResult(double res) {
+        if (Double.isNaN(res)) return "NaN";
+        if (Double.isInfinite(res)) return "Infinity";
+        
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
+        symbols.setDecimalSeparator('.');
+        DecimalFormat df = new DecimalFormat("#.################", symbols);
+        String formatted = df.format(res);
+        
+        if (formatted.endsWith(".")) {
+            formatted = formatted.substring(0, formatted.length() - 1);
+        }
+        return formatted;
+    }
+
+    private static void showWelcomeMessage() {
+        System.out.println("=== Консольный калькулятор ===");
+        System.out.println("Введите математическое выражение.");
+        System.out.println("Команды: help, history, clear, mode, vars, exit");
+        System.out.println("Текущий режим тригонометрии: " + (useDegrees ? "ГРАДУСЫ" : "РАДИАНЫ"));
+        System.out.println("Доступные функции: sin, cos, tan, sqrt, log, log10, min, max, !");
+        System.out.println("Доступные константы: pi, e, ans");
+    }
+
+    private static void printHistory(List<String> history) {
+        if (history.isEmpty()) {
+            System.out.println("История пуста.");
+            return;
+        }
+        System.out.println("История вычислений:");
+        for (int i = 0; i < history.size(); i++) {
+            System.out.println((i + 1) + ". " + history.get(i));
+        }
+    }
+
+    private static void printVariables() {
+        if (variables.isEmpty()) {
+            System.out.println("Пользовательских переменных нет.");
+            return;
+        }
+        System.out.println("Переменные:");
+        for (Map.Entry<String, Double> entry : variables.entrySet()) {
+            System.out.println(entry.getKey() + " = " + formatResult(entry.getValue()));
+        }
+    }
+}
 
 
 
