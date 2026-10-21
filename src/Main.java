@@ -105,6 +105,14 @@ public class Main {
 
             if (Character.isDigit(c) || c == '.') {
                 StringBuilder sb = new StringBuilder();
+                // Обработка отрицательного числа, если минус стоит в начале или после оператора/скобки
+                if (c == '-' && (i == 0 || "+-*/^%!(),".indexOf(expr.charAt(i - 1)) != -1)) {
+                    sb.append(c);
+                    i++;
+                    if (i >= expr.length() || !(Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.')) {
+                        throw new IllegalArgumentException("Некорректный унарный минус.");
+                    }
+                }
                 while (i < expr.length() && (Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.')) {
                     sb.append(expr.charAt(i));
                     i++;
@@ -135,18 +143,24 @@ public class Main {
         List<String> tokens = new ArrayList<>();
         for (int k = 0; k < rawTokens.size(); k++) {
             String current = rawTokens.get(k);
-            tokens.add(current);
+            // Если минус стоит перед числом (например, -5), объединяем в один токен u-5
+            if (current.equals("-") && k + 1 < rawTokens.size() && isNumber(rawTokens.get(k + 1))) {
+                tokens.add("u-" + rawTokens.get(k + 1));
+                k++; // пропускаем следующее число, так как мы его уже обработали
+            } else {
+                tokens.add(current);
+            }
 
-            if (k + 1 < rawTokens.size()) {
-                String next = rawTokens.get(k + 1);
+            if (k + 1 < tokens.size()) {
+                String next = tokens.get(k + 1);
                 if (current.equals(")") && next.equals("(")) {
-                    tokens.add("*");
+                    tokens.add(k + 1, "*");
                 } else if (isNumber(current) && (isVariableOrConstant(next) || next.equals("("))) {
-                    tokens.add("*");
+                    tokens.add(k + 1, "*");
                 } else if (isVariableOrConstant(current) && (next.equals("(") || isVariableOrConstant(next))) {
-                    tokens.add("*");
+                    tokens.add(k + 1, "*");
                 } else if (current.equals(")") && (isNumber(next) || isVariableOrConstant(next))) {
-                    tokens.add("*");
+                    tokens.add(k + 1, "*");
                 }
             }
         }
@@ -227,6 +241,12 @@ public class Main {
         Stack<Double> stack = new Stack<>();
 
         for (String token : rpn) {
+            // Обработка отрицательного числа (токен вида u-5)
+            if (token.startsWith("u-") && isNumber(token.substring(2))) {
+                stack.push(-Double.parseDouble(token.substring(2)));
+                continue;
+            }
+
             if (isNumber(token)) {
                 stack.push(Double.parseDouble(token));
             } else if (isVariableOrConstant(token)) {
@@ -277,6 +297,15 @@ public class Main {
                         default: throw new IllegalStateException("Unexpected value: " + token);
                     }
                     stack.push(result);
+                    continue;
+                }
+
+                // Добавлена функция sqrt
+                if (token.equals("sqrt")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Функция sqrt требует аргумент.");
+                    double val = stack.pop();
+                    if (val < 0) throw new IllegalArgumentException("Корень из отрицательного числа.");
+                    stack.push(Math.sqrt(val));
                     continue;
                 }
 
@@ -388,6 +417,5 @@ public class Main {
         }
     }
 }
-
 
 
