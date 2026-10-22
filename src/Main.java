@@ -45,6 +45,18 @@ public class Main {
                         printVariables();
                         continue;
                     }
+                    // Новая команда для удаления переменных
+                    if (input.toLowerCase().startsWith("del ")) {
+                        String varName = input.substring(4).trim().toLowerCase();
+                        if (variables.containsKey(varName)) {
+                            variables.remove(varName);
+                            System.out.println("Переменная '" + varName + "' удалена.");
+                            history.add(input);
+                        } else {
+                            System.out.println("Ошибка! Переменная '" + varName + "' не найдена.");
+                        }
+                        continue;
+                    }
 
                     if (input.contains("=")) {
                         handleAssignment(input, history);
@@ -178,7 +190,8 @@ public class Main {
         precedence.put("u-", 4); 
         precedence.put("!", 5);  
 
-        Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "min", "max"));
+        // Добавлены ln и log10
+        Set<String> functions = new HashSet<>(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "ln", "min", "max"));
         boolean expectUnary = true;
 
         for (String token : tokens) {
@@ -300,12 +313,29 @@ public class Main {
                     continue;
                 }
 
-                // Добавлена функция sqrt
                 if (token.equals("sqrt")) {
                     if (stack.isEmpty()) throw new IllegalArgumentException("Функция sqrt требует аргумент.");
                     double val = stack.pop();
                     if (val < 0) throw new IllegalArgumentException("Корень из отрицательного числа.");
                     stack.push(Math.sqrt(val));
+                    continue;
+                }
+
+                // Добавлена обработка ln (натуральный логарифм)
+                if (token.equals("ln") || token.equals("log")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Функция ln требует аргумент.");
+                    double val = stack.pop();
+                    if (val <= 0) throw new IllegalArgumentException("Логарифм определен только для положительных чисел.");
+                    stack.push(Math.log(val));
+                    continue;
+                }
+
+                // Добавлена обработка log10 (десятичный логарифм)
+                if (token.equals("log10")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Функция log10 требует аргумент.");
+                    double val = stack.pop();
+                    if (val <= 0) throw new IllegalArgumentException("Логарифм определен только для положительных чисел.");
+                    stack.push(Math.log10(val));
                     continue;
                 }
 
@@ -389,9 +419,10 @@ public class Main {
     private static void showWelcomeMessage() {
         System.out.println("=== Консольный калькулятор ===");
         System.out.println("Введите математическое выражение.");
-        System.out.println("Команды: help, history, clear, mode, vars, exit");
+        System.out.println("Команды: help, history, clear, mode, vars, exit, del <var>");
         System.out.println("Текущий режим тригонометрии: " + (useDegrees ? "ГРАДУСЫ" : "РАДИАНЫ"));
-        System.out.println("Доступные функции: sin, cos, tan, sqrt, log, log10, min, max, !");
+        // Обновлен список функций в приветственном сообщении
+        System.out.println("Доступные функции: sin, cos, tan, sqrt, log (ln), log10, min, max, !");
         System.out.println("Доступные константы: pi, e, ans");
     }
 
@@ -417,5 +448,3 @@ public class Main {
         }
     }
 }
-
-
