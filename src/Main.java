@@ -1,535 +1,358 @@
+package com.symbolic.core;
+
+import java.math.BigInteger;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.*;
+import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
-public class Main {
+public class SymbolicCalculator {
 
-    private static double ans = 0; 
-    private static boolean useDegrees = true; 
-    private static final Map<String, Double> variables = new HashMap<>(); 
+    private final Deque<String> commandLog = new ArrayDeque<>();
+    private final Map<String, Double> context = new HashMap<>();
+    private final NumberFormatter formatter = new NumberFormatter();
+    private final ExpressionParser parser = new ExpressionParser();
+    private final Executor engine = new Executor();
 
-    // Вынесены в статические поля для оптимизации
-    private static final Map<String, Integer> PRECEDENCE = new HashMap<>();
-    private static final Set<String> FUNCTIONS = new HashSet<>();
+    private boolean angularUnitIsDegrees = true;
+    private double lastResult = 0.0;
 
-    static {
-        PRECEDENCE.put("+", 1); 
-        PRECEDENCE.put("-", 1);
-        PRECEDENCE.put("*", 2); 
-        PRECEDENCE.put("/", 2); 
-        PRECEDENCE.put("%", 2);
-        PRECEDENCE.put("//", 2); // Новое: целочисленное деление
-        PRECEDENCE.put("^", 3);
-        PRECEDENCE.put("u-", 4); 
-        PRECEDENCE.put("!", 5);  
-
-        FUNCTIONS.addAll(Arrays.asList("sin", "cos", "tan", "sqrt", "log", "log10", "ln", "min", "max", "abs"));
-        // Новые функции
-        FUNCTIONS.addAll(Arrays.asList("asin", "acos", "atan", "sinh", "cosh", "tanh"));
-    }
+    private static final Set<String> RESERVED = Set.of("pi", "e", "tau", "ans");
 
     public static void main(String[] args) {
-        try (Scanner scanner = new Scanner(System.in)) {
-            List<String> history = new ArrayList<>();
-            showWelcomeMessage();
+        new SymbolicCalculator().repl();
+    }
 
-            StringBuilder multiLineInput = new StringBuilder();
-            int openBrackets = 0;
-
+    private void repl() {
+        System.out.println(engine.getBanner());
+        try (Scanner reader = new Scanner(System.in)) {
+            StringBuilder buffer = new StringBuilder();
+            int balance = 0;
             while (true) {
+                System.out.print(buffer.length() > 0 ? ">>> " : "sym> ");
+                String line = reader.nextLine().trim();
+                if (line.isEmpty()) continue;
+
+                for (char ch : line.toCharArray()) {
+                    if (ch == '(') balance++;
+                    if (ch == ')') balance--;
+                }
+                buffer.append(line).append(" ");
+                if (balance > 0) continue;
+
+                String input = buffer.toString().trim();
+                buffer.setLength(0);
+                balance = 0;
+
+                if (input.equalsIgnoreCase("exit")) break;
+                if (input.equalsIgnoreCase("help")) { System.out.println(engine.getBanner()); continue; }
+                if (input.equalsIgnoreCase("history")) { printLog(); continue; }
+                if (input.equalsIgnoreCase("clear")) { purgeState(); continue; }
+                if (input.equalsIgnoreCase("mode")) { toggleMode(); continue; }
+                if (input.equalsIgnoreCase("vars")) { printContext(); continue; }
+                if (input.toLowerCase().startsWith("del ")) { purgeBinding(input.substring(4).trim().toLowerCase()); continue; }
+                if (input.toLowerCase().startsWith("reset ans")) { lastResult = 0.0; System.out.println("ans -> 0"); continue; }
+
+                if (input.contains("=")) { bind(input); continue; }
+
                 try {
-                    System.out.print((multiLineInput.length() > 0 ? "... " : "\nВведите выражение или команду: "));
-                    String input = scanner.nextLine().trim();
-
-                    if (input.isEmpty()) continue;
-
-                    // Поддержка многострочного ввода для скобок
-                    for (char c : input.toCharArray()) {
-                        if (c == '(') openBrackets++;
-                        if (c == ')') openBrackets--;
-                    }
-                    if (multiLineInput.length() > 0) {
-                        multiLineInput.append(" ").append(input);
-                    } else {
-                        multiLineInput.append(input);
-                    }
-
-                    if (openBrackets > 0) continue;
-
-                    String currentInput = multiLineInput.toString();
-                    multiLineInput.setLength(0);
-                    openBrackets = 0;
-
-                    if (currentInput.equalsIgnoreCase("exit")) break;
-                    if (currentInput.equalsIgnoreCase("help")) {
-                        showWelcomeMessage();
-                        continue;
-                    }
-                    if (currentInput.equalsIgnoreCase("history")) {
-                        printHistory(history);
-                        continue;
-                    }
-                    if (currentInput.equalsIgnoreCase("clear")) {
-                        history.clear();
-                        variables.clear();
-                        ans = 0;
-                        System.out.println("История, переменные и ans успешно очищены.");
-                        continue;
-                    }
-                    if (currentInput.equalsIgnoreCase("mode")) {
-                        useDegrees = !useDegrees;
-                        System.out.println("Режим тригонометрии изменен! Текущий: " + (useDegrees ? "ГРАДУСЫ" : "РАДИАНЫ"));
-                        continue;
-                    }
-                    if (currentInput.equalsIgnoreCase("vars")) {
-                        printVariables();
-                        continue;
-                    }
-                    if (currentInput.toLowerCase().startsWith("del ")) {
-                        String varName = currentInput.substring(4).trim().toLowerCase();
-                        if (variables.containsKey(varName)) {
-                            variables.remove(varName);
-                            System.out.println("Переменная '" + varName + "' удалена.");
-                            history.add(currentInput);
-                        } else {
-                            System.out.println("Ошибка! Переменная '" + varName + "' не найдена.");
-                        }
-                        continue;
-                    }
-                    if (currentInput.toLowerCase().startsWith("reset ans")) {
-                        ans = 0;
-                        System.out.println("ans сброшен в 0.");
-                        continue;
-                    }
-
-                    if (currentInput.contains("=")) {
-                        handleAssignment(currentInput, history);
-                        continue;
-                    }
-
-                    double res = evaluate(currentInput);
-                    // Защита от переполнения (Infinity)
-                    if (Double.isInfinite(res)) {
-                        throw new IllegalArgumentException("Переполнение: результат слишком велик.");
-                    }
-
-                    String formattedRes = formatResult(res);
-                    System.out.println("Результат: " + formattedRes);
-                    
-                    history.add(currentInput + " = " + formattedRes);
-                    ans = res;
-
-                } catch (Exception e) {
-                    System.out.println("Ошибка! " + e.getMessage());
-                    multiLineInput.setLength(0);
-                    openBrackets = 0;
+                    double value = engine.resolve(parser.parse(input), this::fetch);
+                    if (Double.isInfinite(value)) throw new IllegalStateException("Magnitude overflow");
+                    String out = formatter.format(value);
+                    System.out.println("=> " + out);
+                    commandLog.add(input + " = " + out);
+                    lastResult = value;
+                } catch (Exception ex) {
+                    System.err.println("! " + ex.getMessage());
                 }
             }
         }
     }
 
-    private static void handleAssignment(String input, List<String> history) {
+    private void bind(String input) {
         String[] parts = input.split("=", 2);
-        String varName = parts[0].trim().toLowerCase();
-        String expression = parts[1].trim();
+        String key = parts[0].trim().toLowerCase();
+        String expr = parts[1].trim();
 
-        if (!varName.matches("[a-z]+")) {
-            System.out.println("Ошибка! Имя переменной должно состоять только из латинских букв.");
-            return;
-        }
-        if (varName.equals("pi") || varName.equals("e") || varName.equals("ans") || varName.equals("tau")) {
-            System.out.println("Ошибка! Нельзя перезаписывать системные константы и ans.");
-            return;
-        }
+        if (!key.matches("[a-z]+")) { System.err.println("! Invalid identifier"); return; }
+        if (RESERVED.contains(key)) { System.err.println("! Protected symbol"); return; }
 
-        double res = evaluate(expression);
-        variables.put(varName, res);
-        String formattedRes = formatResult(res);
-        System.out.println(varName + " = " + formattedRes);
-        history.add(input + " (Результат: " + formattedRes + ")");
-        ans = res;
+        double val = engine.resolve(parser.parse(expr), this::fetch);
+        context.put(key, val);
+        String out = formatter.format(val);
+        System.out.println(key + " -> " + out);
+        commandLog.add(input + " (Result: " + out + ")");
+        lastResult = val;
     }
 
-    public static double evaluate(String expression) {
-        List<String> tokens = tokenize(expression);
-        List<String> rpn = shuntingYard(tokens);
-        return calculateRPN(rpn);
+    private Double fetch(String token) {
+        return switch (token) {
+            case "pi" -> Math.PI;
+            case "e" -> Math.E;
+            case "tau" -> 2 * Math.PI;
+            case "ans" -> lastResult;
+            default -> context.get(token);
+        };
     }
 
-    private static List<String> tokenize(String expr) {
-        List<String> rawTokens = new ArrayList<>();
-        int i = 0;
-        while (i < expr.length()) {
-            char c = expr.charAt(i);
-            if (Character.isWhitespace(c)) {
-                i++;
-                continue;
-            }
+    private void toggleMode() {
+        angularUnitIsDegrees = !angularUnitIsDegrees;
+        System.out.println("Trig mode: " + (angularUnitIsDegrees ? "DEG" : "RAD"));
+    }
 
-            if (Character.isDigit(c) || c == '.') {
-                StringBuilder sb = new StringBuilder();
-                if (c == '-' && (i == 0 || "+-*/^%!(),".indexOf(expr.charAt(i - 1)) != -1)) {
-                    sb.append(c);
-                    i++;
-                    if (i >= expr.length() || !(Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.')) {
-                        throw new IllegalArgumentException("Некорректный унарный минус.");
+    private void purgeState() {
+        commandLog.clear();
+        context.clear();
+        lastResult = 0.0;
+        System.out.println("State flushed.");
+    }
+
+    private void purgeBinding(String name) {
+        if (context.remove(name) != null) {
+            System.out.println("'" + name + "' evicted.");
+            commandLog.add("del " + name);
+        } else {
+            System.err.println("! No such binding: " + name);
+        }
+    }
+
+    private void printLog() {
+        if (commandLog.isEmpty()) { System.out.println("Log is void."); return; }
+        System.out.println("Session log:");
+        int idx = 1;
+        for (String entry : commandLog) {
+            System.out.println(idx++ + ". " + entry);
+        }
+    }
+
+    private void printContext() {
+        if (context.isEmpty()) { System.out.println("Context is barren."); return; }
+        System.out.println("Bindings:");
+        context.forEach((k, v) -> System.out.println(k + " = " + formatter.format(v)));
+    }
+
+    private static class NumberFormatter {
+        private final DecimalFormat df;
+        NumberFormatter() {
+            DecimalFormatSymbols sym = new DecimalFormatSymbols(Locale.US);
+            sym.setDecimalSeparator('.');
+            df = new DecimalFormat("#.################", sym);
+        }
+        String format(double v) {
+            if (Double.isNaN(v)) return "NaN";
+            if (Double.isInfinite(v)) return "Infinity";
+            String s = df.format(v);
+            return s.endsWith(".") ? s.substring(0, s.length() - 1) : s;
+        }
+    }
+
+    private static class ExpressionParser {
+        private static final Map<String, Integer> PRECEDENCE = Map.of(
+                "+", 1, "-", 1, "*", 2, "/", 2, "%", 2, "//", 2, "^", 3, "u-", 4, "!", 5
+        );
+        private static final Set<String> FUNCTIONS = Set.of(
+                "sin", "cos", "tan", "sqrt", "log", "log10", "ln", "min", "max", "abs", "asin", "acos", "atan", "sinh", "cosh", "tanh"
+        );
+
+        List<String> ingest(String source) {
+            List<String> raw = new ArrayList<>();
+            int pos = 0;
+            while (pos < source.length()) {
+                char ch = source.charAt(pos);
+                if (Character.isWhitespace(ch)) { pos++; continue; }
+                if (Character.isDigit(ch) || ch == '.') {
+                    StringBuilder sb = new StringBuilder();
+                    if (ch == '-' && (pos == 0 || "+-*/^%!(),".indexOf(source.charAt(pos - 1)) != -1)) {
+                        sb.append(ch); pos++;
+                        if (pos >= source.length() || !(Character.isDigit(source.charAt(pos)) || source.charAt(pos) == '.')) {
+                            throw new IllegalArgumentException("Malformed unary minus");
+                        }
                     }
+                    while (pos < source.length() && (Character.isDigit(source.charAt(pos)) || source.charAt(pos) == '.')) {
+                        sb.append(source.charAt(pos++));
+                    }
+                    raw.add(sb.toString());
+                    continue;
                 }
-                while (i < expr.length() && (Character.isDigit(expr.charAt(i)) || expr.charAt(i) == '.')) {
-                    sb.append(expr.charAt(i));
-                    i++;
+                if (Character.isLetter(ch)) {
+                    StringBuilder sb = new StringBuilder();
+                    while (pos < source.length() && Character.isLetterOrDigit(source.charAt(pos))) {
+                        sb.append(source.charAt(pos++));
+                    }
+                    raw.add(sb.toString().toLowerCase());
+                    continue;
                 }
-                rawTokens.add(sb.toString());
-                continue;
-            }
-
-            if (Character.isLetter(c)) {
-                StringBuilder sb = new StringBuilder();
-                while (i < expr.length() && Character.isLetterOrDigit(expr.charAt(i))) {
-                    sb.append(expr.charAt(i));
-                    i++;
+                if (ch == '/' && pos + 1 < source.length() && source.charAt(pos + 1) == '/') {
+                    raw.add("//"); pos += 2; continue;
                 }
-                rawTokens.add(sb.toString().toLowerCase());
-                continue;
+                if ("+-*/^%!(),".indexOf(ch) != -1) {
+                    raw.add(String.valueOf(ch));
+                    pos++; continue;
+                }
+                throw new IllegalArgumentException("Unknown glyph: " + ch);
             }
 
-            // Обработка двухсимвольного оператора //
-            if (c == '/' && i + 1 < expr.length() && expr.charAt(i + 1) == '/') {
-                rawTokens.add("//");
-                i += 2;
-                continue;
+            List<String> tokens = new ArrayList<>();
+            for (int i = 0; i < raw.size(); i++) {
+                String cur = raw.get(i);
+                if (cur.equals("-") && i + 1 < raw.size() && isNumeric(raw.get(i + 1))) {
+                    tokens.add("u-" + raw.get(i + 1)); i++; continue;
+                }
+                tokens.add(cur);
+                if (i + 1 < tokens.size()) {
+                    String prev = tokens.get(i), next = tokens.get(i + 1);
+                    if (prev.equals(")") && next.equals("(")) tokens.add(i + 1, "*");
+                    else if (isNumeric(prev) && (isIdentifier(next) || next.equals("("))) tokens.add(i + 1, "*");
+                    else if (isIdentifier(prev) && (next.equals("(") || isIdentifier(next))) tokens.add(i + 1, "*");
+                    else if (prev.equals(")") && (isNumeric(next) || isIdentifier(next))) tokens.add(i + 1, "*");
+                }
             }
 
-            if ("+-*/^%!(),".indexOf(c) != -1) {
-                rawTokens.add(String.valueOf(c));
-                i++;
-                continue;
+            List<String> finalTokens = new ArrayList<>();
+            for (String t : tokens) {
+                if (t.equals("!") && !finalTokens.isEmpty()) {
+                    finalTokens.set(finalTokens.size() - 1, finalTokens.get(finalTokens.size() - 1) + "!");
+                } else {
+                    finalTokens.add(t);
+                }
             }
-
-            throw new IllegalArgumentException("Неизвестный символ в выражении: " + c);
+            return finalTokens;
         }
 
-        List<String> tokens = new ArrayList<>();
-        for (int k = 0; k < rawTokens.size(); k++) {
-            String current = rawTokens.get(k);
-
-            // Объединение минуса с числом (унарный минус)
-            if (current.equals("-") && k + 1 < rawTokens.size() && isNumber(rawTokens.get(k + 1))) {
-                tokens.add("u-" + rawTokens.get(k + 1));
-                k++;
-            } else {
-                tokens.add(current);
-            }
-
-            // Автодополнение умножением (implicit multiplication)
-            if (k + 1 < tokens.size()) {
-                String next = tokens.get(k + 1);
-                String prev = tokens.get(k);
-                if (prev.equals(")") && next.equals("(")) {
-                    tokens.add(k + 1, "*");
-                } else if (isNumber(prev) && (isVariableOrConstant(next) || next.equals("("))) {
-                    tokens.add(k + 1, "*");
-                } else if (isVariableOrConstant(prev) && (next.equals("(") || isVariableOrConstant(next))) {
-                    tokens.add(k + 1, "*");
-                } else if (prev.equals(")") && (isNumber(next) || isVariableOrConstant(next))) {
-                    tokens.add(k + 1, "*");
+        List<String> toRPN(List<String> tokens) {
+            List<String> output = new ArrayList<>();
+            Deque<String> stack = new ArrayDeque<>();
+            boolean expectUnary = true;
+            for (String t : tokens) {
+                if (isNumeric(t) || isIdentifier(t)) { output.add(t); expectUnary = false; continue; }
+                if (FUNCTIONS.contains(t)) { stack.push(t); expectUnary = false; continue; }
+                if (t.equals(",")) {
+                    while (!stack.isEmpty() && !stack.peek().equals("(")) output.add(stack.pop());
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Rogue comma");
+                    expectUnary = true; continue;
                 }
-            }
-        }
-
-        // Обработка постфиксного факториала (5! -> 5 !)
-        List<String> finalTokens = new ArrayList<>();
-        for (int i = 0; i < tokens.size(); i++) {
-            if (tokens.get(i).equals("!") && i > 0) {
-                finalTokens.set(finalTokens.size() - 1, finalTokens.get(finalTokens.size() - 1) + "!");
-            } else {
-                finalTokens.add(tokens.get(i));
-            }
-        }
-
-        return finalTokens;
-    }
-
-    private static List<String> shuntingYard(List<String> tokens) {
-        List<String> output = new ArrayList<>();
-        Stack<String> stack = new Stack<>();
-        boolean expectUnary = true;
-
-        for (String token : tokens) {
-            if (isNumberOrVariable(token)) {
-                output.add(token);
-                expectUnary = false;
-            } else if (FUNCTIONS.contains(token)) {
-                stack.push(token);
-                expectUnary = false;
-            } else if (token.equals(",")) {
-                while (!stack.isEmpty() && !stack.peek().equals("(")) {
-                    output.add(stack.pop());
+                if (t.equals("(")) { stack.push(t); expectUnary = true; continue; }
+                if (t.equals(")")) {
+                    while (!stack.isEmpty() && !stack.peek().equals("(")) output.add(stack.pop());
+                    if (stack.isEmpty()) throw new IllegalArgumentException("Unmatched ')'");
+                    stack.pop();
+                    if (!stack.isEmpty() && FUNCTIONS.contains(stack.peek())) output.add(stack.pop());
+                    expectUnary = false; continue;
                 }
-                if (stack.isEmpty()) {
-                    throw new IllegalArgumentException("Разделитель ',' использован вне скобок.");
-                }
-                expectUnary = true;
-            } else if (token.equals("(")) {
-                stack.push(token);
-                expectUnary = true;
-            } else if (token.equals(")")) {
-                while (!stack.isEmpty() && !stack.peek().equals("(")) {
-                    output.add(stack.pop());
-                }
-                if (stack.isEmpty()) {
-                    throw new IllegalArgumentException("Пропущена открывающая скобка.");
-                }
-                stack.pop(); 
-                if (!stack.isEmpty() && FUNCTIONS.contains(stack.peek())) {
-                    output.add(stack.pop());
-                }
-                expectUnary = false;
-            } else { 
-                if (expectUnary && token.equals("-")) {
-                    token = "u-";
-                }
-                
+                if (expectUnary && t.equals("-")) t = "u-";
                 while (!stack.isEmpty() && !stack.peek().equals("(") && 
-                       (PRECEDENCE.getOrDefault(stack.peek(), 0) > PRECEDENCE.getOrDefault(token, 0) ||
-                       (PRECEDENCE.getOrDefault(stack.peek(), 0) == PRECEDENCE.getOrDefault(token, 0) && !token.equals("^")))) {
+                       (PRECEDENCE.getOrDefault(stack.peek(), 0) > PRECEDENCE.getOrDefault(t, 0) ||
+                        (PRECEDENCE.getOrDefault(stack.peek(), 0) == PRECEDENCE.getOrDefault(t, 0) && !t.equals("^")))) {
                     output.add(stack.pop());
                 }
-                stack.push(token);
+                stack.push(t);
                 expectUnary = true;
             }
-        }
-
-        while (!stack.isEmpty()) {
-            String top = stack.pop();
-            if (top.equals("(") || top.equals(")")) {
-                throw new IllegalArgumentException("Несогласованные скобки.");
+            while (!stack.isEmpty()) {
+                String top = stack.pop();
+                if (top.equals("(") || top.equals(")")) throw new IllegalArgumentException("Bracket mismatch");
+                output.add(top);
             }
-            output.add(top);
+            return output;
         }
 
-        return output;
+        private boolean isNumeric(String s) {
+            try { Double.parseDouble(s); return true; } catch (NumberFormatException e) { return false; }
+        }
+        private boolean isIdentifier(String s) {
+            return s.matches("[a-z]+");
+        }
     }
 
-    private static double calculateRPN(List<String> rpn) {
-        Stack<Double> stack = new Stack<>();
+    private static class Executor {
+        private static final Map<String, Function<Double, Double>> UNARY = Map.of(
+                "sin", v -> Math.sin(v), "cos", v -> Math.cos(v), "tan", v -> Math.tan(v),
+                "asin", v -> Math.asin(v), "acos", v -> Math.acos(v), "atan", v -> Math.atan(v),
+                "sinh", v -> Math.sinh(v), "cosh", v -> Math.cosh(v), "tanh", v -> Math.tanh(v),
+                "sqrt", v -> Math.sqrt(v), "ln", v -> Math.log(v), "log", v -> Math.log(v),
+                "log10", v -> Math.log10(v), "abs", v -> Math.abs(v)
+        );
+        private static final Map<String, BiFunction<Double, Double, Double>> BINARY = Map.of(
+                "+", Double::sum, "-", (a, b) -> a - b, "*", (a, b) -> a * b,
+                "/", (a, b) -> { if (b == 0) throw new IllegalArgumentException("Division by zero"); return a / b; },
+                "//", (a, b) -> { if (b == 0) throw new IllegalArgumentException("Division by zero"); return (double) ((long) a / (long) b); },
+                "%", (a, b) -> { if (b == 0) throw new IllegalArgumentException("Division by zero"); return a % b; },
+                "^", Math::pow
+        );
 
-        for (String token : rpn) {
-            if (token.startsWith("u-") && isNumber(token.substring(2))) {
-                stack.push(-Double.parseDouble(token.substring(2)));
-                continue;
-            }
+        String getBanner() {
+            return """
+                   === Symbolic Engine ===
+                   Enter expressions. Commands: help, history, clear, mode, vars, exit, del <id>, reset ans
+                   """;
+        }
 
-            if (isNumber(token)) {
-                stack.push(Double.parseDouble(token));
-            } else if (isVariableOrConstant(token)) {
-                stack.push(getVariableOrConstantValue(token));
-            } else {
-                if (token.equals("u-")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("Неверное выражение.");
-                    stack.push(-stack.pop());
-                    continue;
+        double resolve(List<String> rpn, Function<String, Double> lookup) {
+            Deque<Double> stack = new ArrayDeque<>();
+            for (String t : rpn) {
+                if (t.startsWith("u-") && isNumeric(t.substring(2))) {
+                    stack.push(-Double.parseDouble(t.substring(2))); continue;
                 }
-                if (token.endsWith("!")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("Неверное выражение.");
-                    String numPart = token.substring(0, token.length() - 1);
-                    if (!isNumber(numPart)) throw new IllegalArgumentException("Факториал применен к нечислу.");
-                    double val = Double.parseDouble(numPart);
-                    if (val < 0 || val != Math.floor(val)) throw new IllegalArgumentException("Факториал определен только для целых неотрицательных чисел.");
-                    if (val > 20) throw new IllegalArgumentException("Слишком большое число для факториала (риск переполнения).");
-                    stack.push(factorial((int) val));
-                    continue;
-                }
+                if (isNumeric(t)) { stack.push(Double.parseDouble(t)); continue; }
+                if (isIdentifier(t)) { Double val = lookup.apply(t); if (val == null) throw new IllegalArgumentException("Unknown: " + t); stack.push(val); continue; }
 
-                if (token.equals("min") || token.equals("max")) {
-                    if (stack.size() < 2) throw new IllegalArgumentException(token + " требует два аргумента.");
-                    double b = stack.pop();
-                    double a = stack.pop();
-                    stack.push(token.equals("min") ? Math.min(a, b) : Math.max(a, b));
-                    double res = stack.peek();
-                    if (Double.isInfinite(res)) throw new IllegalArgumentException("Переполнение в функции " + token);
-                    continue;
+                if (t.equals("u-")) { stack.push(-stack.pop()); continue; }
+                if (t.endsWith("!")) {
+                    String num = t.substring(0, t.length() - 1);
+                    if (!isNumeric(num)) throw new IllegalArgumentException("Factorial on non-numeric");
+                    double v = Double.parseDouble(num);
+                    if (v < 0 || v != Math.floor(v)) throw new IllegalArgumentException("Factorial domain error");
+                    if (v > 20) throw new IllegalArgumentException("Factorial overflow");
+                    stack.push(factorial((int) v)); continue;
                 }
-
-                if (token.equals("sin") || token.equals("cos") || token.equals("tan") || 
-                    token.equals("asin") || token.equals("acos") || token.equals("atan") ||
-                    token.equals("sinh") || token.equals("cosh") || token.equals("tanh") || token.equals("abs")) {
-                    
-                    if (stack.isEmpty()) throw new IllegalArgumentException("Функция " + token + " требует аргумент.");
-                    double val = stack.pop();
-                    
-                    double result;
-                    switch (token) {
-                        case "sin": result = Math.sin(useDegrees ? Math.toRadians(val) : val); break;
-                        case "cos": result = Math.cos(useDegrees ? Math.toRadians(val) : val); break;
-                        case "tan": 
-                            double cosVal = Math.cos(useDegrees ? Math.toRadians(val) : val);
-                            if (Math.abs(cosVal) < 1e-12) throw new IllegalArgumentException("Тангенс не определен для этого угла.");
-                            result = Math.tan(useDegrees ? Math.toRadians(val) : val); 
-                            break;
-                        case "asin": 
-                            if (val < -1 || val > 1) throw new IllegalArgumentException("asin определен для [-1, 1].");
-                            result = Math.asin(val); 
-                            break;
-                        case "acos": 
-                            if (val < -1 || val > 1) throw new IllegalArgumentException("acos определен для [-1, 1].");
-                            result = Math.acos(val); 
-                            break;
-                        case "atan": result = Math.atan(val); break;
-                        case "sinh": result = Math.sinh(val); break;
-                        case "cosh": result = Math.cosh(val); break;
-                        case "tanh": result = Math.tanh(val); break;
-                        case "abs": result = Math.abs(val); break;
-                        default: throw new IllegalStateException("Unexpected value: " + token);
+                if (t.equals("min") || t.equals("max")) {
+                    if (stack.size() < 2) throw new IllegalArgumentException(t + " needs two operands");
+                    double b = stack.pop(), a = stack.pop();
+                    stack.push(t.equals("min") ? Math.min(a, b) : Math.max(a, b)); continue;
+                }
+                if (UNARY.containsKey(t)) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException(t + " needs an argument");
+                    double v = stack.pop();
+                    Double res = UNARY.get(t).apply(v);
+                    if (Double.isInfinite(res)) throw new IllegalArgumentException("Overflow in " + t);
+                    stack.push(res); continue;
+                }
+                if (stack.size() < 2) throw new IllegalArgumentException("Malformed RPN");
+                double b = stack.pop(), a = stack.pop();
+                Double res = switch (t) {
+                    case "+" -> BINARY.get("+").apply(a, b);
+                    case "-" -> BINARY.get("-").apply(a, b);
+                    case "*" -> BINARY.get("*").apply(a, b);
+                    case "/" -> BINARY.get("/").apply(a, b);
+                    case "//" -> BINARY.get("//").apply(a, b);
+                    case "%" -> {
+                        double r = BINARY.get("%").apply(a, b);
+                        if (r < 0) r += Math.abs(b);
+                        yield r;
                     }
-                    if (Double.isInfinite(result)) throw new IllegalArgumentException("Переполнение в функции " + token);
-                    stack.push(result);
-                    continue;
-                }
-
-                if (token.equals("sqrt")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("Функция sqrt требует аргумент.");
-                    double val = stack.pop();
-                    if (val < 0) throw new IllegalArgumentException("Корень из отрицательного числа.");
-                    double res = Math.sqrt(val);
-                    if (Double.isInfinite(res)) throw new IllegalArgumentException("Переполнение в sqrt");
-                    stack.push(res);
-                    continue;
-                }
-
-                if (token.equals("ln") || token.equals("log")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("Функция ln требует аргумент.");
-                    double val = stack.pop();
-                    if (val <= 0) throw new IllegalArgumentException("Логарифм определен только для положительных чисел.");
-                    double res = Math.log(val);
-                    if (Double.isInfinite(res)) throw new IllegalArgumentException("Переполнение в ln");
-                    stack.push(res);
-                    continue;
-                }
-
-                if (token.equals("log10")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("Функция log10 требует аргумент.");
-                    double val = stack.pop();
-                    if (val <= 0) throw new IllegalArgumentException("Логарифм определен только для положительных чисел.");
-                    double res = Math.log10(val);
-                    if (Double.isInfinite(res)) throw new IllegalArgumentException("Переполнение в log10");
-                    stack.push(res);
-                    continue;
-                }
-
-                if (stack.size() < 2) throw new IllegalArgumentException("Неверное выражение.");
-                double b = stack.pop();
-                double a = stack.pop();
-                double res;
-
-                switch (token) {
-                    case "+": res = a + b; break;
-                    case "-": res = a - b; break;
-                    case "*": res = a * b; break;
-                    case "/": 
-                        if (b == 0) throw new IllegalArgumentException("Деление на ноль."); 
-                        res = a / b; 
-                        break;
-                    case "//": 
-                        if (b == 0) throw new IllegalArgumentException("Деление на ноль."); 
-                        res = (double)((long)a / (long)b); 
-                        break;
-                    case "%": 
-                        if (b == 0) throw new IllegalArgumentException("Деление на ноль.");
-                        res = a % b;
-                        if (res < 0) res += Math.abs(b);
-                        break;
-                    case "^": res = Math.pow(a, b); break;
-                    default: throw new IllegalArgumentException("Неизвестный оператор: " + token);
-                }
-                if (Double.isInfinite(res)) throw new IllegalArgumentException("Переполнение в операции " + token);
+                    case "^" -> BINARY.get("^").apply(a, b);
+                    default -> throw new IllegalArgumentException("Unknown operator: " + t);
+                };
+                if (Double.isInfinite(res)) throw new IllegalArgumentException("Overflow in " + t);
                 stack.push(res);
             }
+            if (stack.size() != 1) throw new IllegalArgumentException("Invalid expression");
+            return stack.pop();
         }
 
-        if (stack.size() != 1) throw new IllegalArgumentException("Неверное выражение.");
-        return stack.pop();
-    }
-
-    private static boolean isNumber(String s) {
-        try {
-            Double.parseDouble(s);
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
+        private boolean isNumeric(String s) {
+            try { Double.parseDouble(s); return true; } catch (NumberFormatException e) { return false; }
         }
-    }
-
-    private static boolean isVariableOrConstant(String s) {
-        return variables.containsKey(s) || s.equals("pi") || s.equals("e") || s.equals("ans") || s.equals("tau");
-    }
-
-    private static boolean isNumberOrVariable(String s) {
-        return isNumber(s) || isVariableOrConstant(s);
-    }
-
-    private static double getVariableOrConstantValue(String s) {
-        switch (s) {
-            case "pi": return Math.PI;
-            case "e": return Math.E;
-            case "ans": return ans;
-            case "tau": return 2 * Math.PI;
-            default: return variables.get(s);
+        private boolean isIdentifier(String s) {
+            return s.matches("[a-z]+");
         }
-    }
 
-    private static double factorial(int n) {
-        BigInteger result = BigInteger.ONE;
-        for (int i = 2; i <= n; i++) {
-            result = result.multiply(BigInteger.valueOf(i));
-        }
-        return result.doubleValue();
-    }
-
-    private static String formatResult(double res) {
-        if (Double.isNaN(res)) return "NaN";
-        if (Double.isInfinite(res)) return "Infinity";
-        
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.US);
-        symbols.setDecimalSeparator('.');
-        DecimalFormat df = new DecimalFormat("#.################", symbols);
-        String formatted = df.format(res);
-        
-        if (formatted.endsWith(".")) {
-            formatted = formatted.substring(0, formatted.length() - 1);
-        }
-        return formatted;
-    }
-
-    private static void showWelcomeMessage() {
-        System.out.println("=== Консольный калькулятор ===");
-        System.out.println("Введите математическое выражение.");
-        System.out.println("Команды: help, history, clear, mode, vars, exit, del <var>, reset ans");
-        System.out.println("Текущий режим тригонометрии: " + (useDegrees ? "ГРАДУСЫ" : "РАДИАНЫ"));
-        System.out.println("Доступные функции: sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, sqrt, log (ln), log10, abs, min, max, !");
-        System.out.println("Доступные константы: pi, e, ans, tau");
-        System.out.println("Операторы: +, -, *, /, // (целочисленное), %, ^");
-    }
-
-    private static void printHistory(List<String> history) {
-        if (history.isEmpty()) {
-            System.out.println("История пуста.");
-            return;
-        }
-        System.out.println("История вычислений:");
-        for (int i = 0; i < history.size(); i++) {
-            System.out.println((i + 1) + ". " + history.get(i));
-        }
-    }
-
-    private static void printVariables() {
-        if (variables.isEmpty()) {
-            System.out.println("Пользовательских переменных нет.");
-            return;
-        }
-        System.out.println("Переменные:");
-        for (Map.Entry<String, Double> entry : variables.entrySet()) {
-            System.out.println(entry.getKey() + " = " + formatResult(entry.getValue()));
+        private double factorial(int n) {
+            BigInteger acc = BigInteger.ONE;
+            for (int i = 2; i <= n; i++) acc = acc.multiply(BigInteger.valueOf(i));
+            return acc.doubleValue();
         }
     }
 }
