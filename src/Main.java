@@ -187,7 +187,7 @@ public class SymbolicCalculator {
                 char ch = source.charAt(pos);
                 if (Character.isWhitespace(ch)) { pos++; continue; }
                 if (Character.isDigit(ch) || ch == '.') {
-                    StringBuilder sb = new StringBuilder();
+                    StringBuilder sb = new ArrayList<>();
                     // Захват унарного минуса перед числом
                     if (ch == '-' && (pos == 0 || "+-*/^%!(),".indexOf(source.charAt(pos - 1)) != -1)) {
                         sb.append(ch);
@@ -239,6 +239,7 @@ public class SymbolicCalculator {
 
             List<String> finalTokens = new ArrayList<>();
             for (String t : tokens) {
+                // Склеивание постфиксного факториала с числом или идентификатором
                 if (t.equals("!") && !finalTokens.isEmpty()) {
                     finalTokens.set(finalTokens.size() - 1, finalTokens.get(finalTokens.size() - 1) + "!");
                 } else {
