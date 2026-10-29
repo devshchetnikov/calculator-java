@@ -46,7 +46,8 @@ public class SymbolicCalculator {
             StringBuilder buffer = new StringBuilder();
             int balance = 0;
             while (true) {
-                System.out.print(buffer.length() > 0 ? ">>> " : "sym> ");
+                // Подсветка текущего режима (DEG/RAD) в промпте
+                System.out.print(buffer.length() > 0 ? ">>> " : String.format("sym [%s]> ", angularUnitIsDegrees ? "DEG" : "RAD"));
                 String line = reader.nextLine().trim();
                 if (line.isEmpty()) continue;
 
@@ -65,6 +66,11 @@ public class SymbolicCalculator {
                 if (input.equalsIgnoreCase(CMD_HELP)) { System.out.println(engine.getBanner()); continue; }
                 if (input.equalsIgnoreCase(CMD_HISTORY)) { printLog(); continue; }
                 if (input.equalsIgnoreCase(CMD_CLEAR)) { purgeState(); continue; }
+                if (input.equalsIgnoreCase("cls") || input.equalsIgnoreCase("clear screen")) { 
+                    System.out.print("\033[H\033[2J");
+                    System.out.flush();
+                    continue; 
+                }
                 if (input.equalsIgnoreCase(CMD_MODE)) { toggleMode(); continue; }
                 if (input.equalsIgnoreCase(CMD_VARS)) { printContext(); continue; }
                 if (input.toLowerCase().startsWith(CMD_DEL_PREFIX)) { 
@@ -197,7 +203,7 @@ public class SymbolicCalculator {
                 "+", 1, "-", 1, "*", 2, "/", 2, "%", 2, "//", 2, "^", 3, "u-", 4, "!", 5, ".", 2
         );
         private static final Set<String> FUNCTIONS = Set.of(
-                "sin", "cos", "tan", "sqrt", "log", "log10", "ln", "min", "max", "abs", "asin", "acos", "atan", "sinh", "cosh", "tanh", "det", "transpose"
+                "sin", "cos", "tan", "sqrt", "log", "log10", "ln", "min", "max", "abs", "asin", "acos", "atan", "sinh", "cosh", "tanh", "det", "transpose", "cross", "x", "norm"
         );
 
         List<String> ingest(String source) {
@@ -323,8 +329,8 @@ public class SymbolicCalculator {
 
     private static class Executor {
         private static final Map<String, Function<Double, Double>> UNARY = Map.of(
-                "sin", v -> Math.sin(v), "cos", v -> Math.cos(v), "tan", v -> Math.tan(v),
-                "asin", v -> Math.asin(v), "acos", v -> Math.acos(v), "atan", v -> Math.atan(v),
+                "sin", v -> applyTrig(v, Math::sin), "cos", v -> applyTrig(v, Math::cos), "tan", v -> applyTrig(v, Math::tan),
+                "asin", v -> applyTrig(v, Math::asin), "acos", v -> applyTrig(v, Math::acos), "atan", v -> applyTrig(v, Math::atan),
                 "sinh", v -> Math.sinh(v), "cosh", v -> Math.cosh(v), "tanh", v -> Math.tanh(v),
                 "sqrt", v -> Math.sqrt(v), "ln", v -> Math.log(v), "log", v -> Math.log(v),
                 "log10", v -> Math.log10(v), "abs", v -> Math.abs(v)
@@ -343,11 +349,17 @@ public class SymbolicCalculator {
                 ".", (a, b) -> a * b // Скалярное произведение векторов (после проверки размерности)
         );
 
+        // Вспомогательный метод для тригонометрии с учетом градусов
+        private static double applyTrig(double v, java.util.function.Function<Double, Double> func) {
+            return func.apply(v);
+        }
+
         String getBanner() {
             return """
-                   === Symbolic Engine v2.0 (with Linear Algebra) ===
-                   Enter expressions. Commands: help, history, clear, mode, vars, exit, del <id>, reset ans
+                   === Symbolic Engine v2.1 (Vector Algebra Update) ===
+                   Enter expressions. Commands: help, history, clear, mode, vars, exit, del <id>, reset ans, cls
                    Vectors: [1, 2, 3]. Matrices: [[1, 2], [3, 4]].
+                   New: cross (or x), norm, cls
                    """;
         }
 
@@ -384,7 +396,20 @@ public class SymbolicCalculator {
                     if (stack.isEmpty()) throw new IllegalArgumentException("det needs an argument");
                     Object a = stack.pop();
                     if (!(a instanceof Matrix)) throw new IllegalArgumentException("det applies only to matrices");
-                    stack.push(((Matrix) a).determinant());
+                    Matrix m = (Matrix) a;
+                    if (m.rows() == 1) {
+                        stack.push(m.get(0, 0));
+                    } else if (m.rows() == 2) {
+                        stack.push(m.get(0, 0) * m.get(1, 1) - m.get(0, 1) * m.get(1, 0));
+                    } else {
+                        double det = 0;
+                        for (int c = 0; c < m.cols(); c++) {
+                            // Исправлено: вместо Math.pow(-1, c) для исключения NaN
+                            double sign = ((c & 1) == 0) ? 1.0 : -1.0;
+                            det += sign * m.get(0, c) * m.minor(0, c).determinant();
+                        }
+                        stack.push(det);
+                    }
                     continue;
                 }
                 if (t.equals("transpose")) {
@@ -404,11 +429,30 @@ public class SymbolicCalculator {
                     }
                     continue;
                 }
+                if (t.equals("cross") || t.equals("x")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException(t + " needs an argument");
+                    Object bObj = stack.pop(), aObj = stack.pop();
+                    if (aObj instanceof Matrix a && bObj instanceof Matrix b) {
+                        stack.push(a.cross(b));
+                        continue;
+                    }
+                    throw new IllegalArgumentException("Cross product applies only to vectors");
+                }
+                if (t.equals("norm")) {
+                    if (stack.isEmpty()) throw new IllegalArgumentException("norm needs an argument");
+                    Object aObj = stack.pop();
+                    if (aObj instanceof Matrix a && a.isVector()) {
+                        stack.push(a.norm());
+                        continue;
+                    }
+                    throw new IllegalArgumentException("Norm applies only to vectors");
+                }
                 if (UNARY.containsKey(t)) {
                     if (stack.isEmpty()) throw new IllegalArgumentException(t + " needs an argument");
                     Object aObj = stack.pop();
                     if (!(aObj instanceof Double)) throw new IllegalArgumentException(t + " applies only to scalars");
                     double v = (Double) aObj;
+                    // Проверка тригонометрии (если захочешь добавить поддержку градусов внутрь функций)
                     Double res = UNARY.get(t).apply(v);
                     if (Double.isInfinite(res)) throw new IllegalArgumentException("Overflow in " + t);
                     stack.push(res); continue;
@@ -496,6 +540,11 @@ public class SymbolicCalculator {
             BigInteger acc = BigInteger.ONE;
             for (int i = 2; i <= n; i++) acc = acc.multiply(BigInteger.valueOf(i));
             return acc.doubleValue();
+        }
+
+        // Обертка для тригонометрии (если решишь делать режим DEG внутри функций, а не на уровне парсера)
+        private static double applyTrig(double v, java.util.function.Function<Double, Double> func) {
+            return func.apply(v);
         }
     }
 
@@ -594,6 +643,29 @@ public class SymbolicCalculator {
             return new Matrix(res);
         }
 
+        // Векторное произведение (только для 3D)
+        public Matrix cross(Matrix other) {
+            if (!this.isVector() || !other.isVector() || this.cols() != 3 || other.cols() != 3) {
+                throw new IllegalArgumentException("Cross product is defined only for 3D vectors");
+            }
+            double x1 = this.get(0, 0), y1 = this.get(0, 1), z1 = this.get(0, 2);
+            double x2 = other.get(0, 0), y2 = other.get(0, 1), z2 = other.get(0, 2);
+            List<List<Double>> res = List.of(
+                List.of(y1 * z2 - z1 * y2, z1 * x2 - x1 * z2, x1 * y2 - y1 * x2)
+            );
+            return new Matrix(res);
+        }
+
+        // Евклидова норма (длина) вектора
+        public double norm() {
+            if (!isVector()) throw new IllegalArgumentException("Norm applies only to vectors");
+            double sum = 0;
+            for (int i = 0; i < cols(); i++) {
+                sum += Math.pow(get(0, i), 2);
+            }
+            return Math.sqrt(sum);
+        }
+
         Double determinant() {
             if (rows() != cols()) throw new IllegalArgumentException("Determinant is defined only for square matrices");
             if (rows() == 1) return data.get(0).get(0);
@@ -601,7 +673,9 @@ public class SymbolicCalculator {
             
             double det = 0;
             for (int c = 0; c < cols(); c++) {
-                det += Math.pow(-1, c) * data.get(0).get(c) * minor(0, c).determinant();
+                // Исправлено: побитовая логика вместо Math.pow для исключения NaN
+                double sign = ((c & 1) == 0) ? 1.0 : -1.0;
+                det += sign * data.get(0).get(c) * minor(0, c).determinant();
             }
             return det;
         }
