@@ -1,4 +1,3 @@
-import java.math.BigInteger;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.ArrayDeque;
@@ -13,10 +12,12 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
+import static java.lang.Math.toRadians;
+
 public class SymbolicCalculator {
 
     private final Deque<String> commandLog = new ArrayDeque<>();
-    private final Map<String, Object> context = new HashMap<>(); // Object теперь хранит Double или Matrix
+    private final Map<String, Object> context = new HashMap<>();
     private final NumberFormatter formatter = new NumberFormatter();
     private final ExpressionParser parser = new ExpressionParser();
     private final Executor engine = new Executor();
@@ -26,7 +27,6 @@ public class SymbolicCalculator {
 
     private static final Set<String> RESERVED = Set.of("pi", "e", "tau", "ans");
 
-    // Константы для команд REPL
     private static final String CMD_EXIT = "exit";
     private static final String CMD_HELP = "help";
     private static final String CMD_HISTORY = "history";
@@ -46,7 +46,6 @@ public class SymbolicCalculator {
             StringBuilder buffer = new StringBuilder();
             int balance = 0;
             while (true) {
-                // Подсветка текущего режима (DEG/RAD) в промпте
                 System.out.print(buffer.length() > 0 ? ">>> " : String.format("sym [%s]> ", angularUnitIsDegrees ? "DEG" : "RAD"));
                 String line = reader.nextLine().trim();
                 if (line.isEmpty()) continue;
@@ -94,8 +93,8 @@ public class SymbolicCalculator {
                         commandLog.add(input + " = " + out);
                         lastResult = d;
                     } else if (value instanceof Matrix m) {
-                        System.out.println("=> " + m.toString());
-                        commandLog.add(input + " = " + m.toString());
+                        System.out.println("=> " + m);
+                        commandLog.add(input + " = " + m);
                     }
                 } catch (Exception ex) {
                     System.err.println("! " + ex.getMessage());
@@ -121,8 +120,8 @@ public class SymbolicCalculator {
                 commandLog.add(input + " (Result: " + out + ")");
                 lastResult = d;
             } else if (val instanceof Matrix m) {
-                System.out.println(key + " -> " + m.toString());
-                commandLog.add(input + " (Result: " + m.toString() + ")");
+                System.out.println(key + " -> " + m);
+                commandLog.add(input + " (Result: " + m + ")");
             }
         } catch (Exception ex) {
             System.err.println("! " + ex.getMessage());
@@ -176,7 +175,7 @@ public class SymbolicCalculator {
             if (v instanceof Double d) {
                 System.out.println(k + " = " + formatter.format(d));
             } else if (v instanceof Matrix m) {
-                System.out.println(k + " = " + m.toString());
+                System.out.println(k + " = " + m);
             }
         });
     }
@@ -200,7 +199,7 @@ public class SymbolicCalculator {
 
     private static class ExpressionParser {
         private static final Map<String, Integer> PRECEDENCE = Map.of(
-                "+", 1, "-", 1, "*", 2, "/", 2, "%", 2, "//", 2, "^", 3, "u-", 4, "!", 5, ".", 2
+                "+", 1, "-", 1, "*", 2, "/", 2, "%", 2, "//", 2, "^", 3, "u-", 4, "!", 5
         );
         private static final Set<String> FUNCTIONS = Set.of(
                 "sin", "cos", "tan", "sqrt", "log", "log10", "ln", "min", "max", "abs", "asin", "acos", "atan", "sinh", "cosh", "tanh", "det", "transpose", "cross", "x", "norm"
@@ -214,8 +213,8 @@ public class SymbolicCalculator {
                 if (Character.isWhitespace(ch)) { pos++; continue; }
                 if (ch == '[') { raw.add("["); pos++; continue; }
                 if (ch == ']') { raw.add("]"); pos++; continue; }
-                if (ch == '.') { raw.add("."); pos++; continue; } // Оператор скалярного произведения
-                
+                if (ch == '.') { raw.add("."); pos++; continue; }
+
                 if (Character.isDigit(ch) || ch == '.') {
                     StringBuilder sb = new StringBuilder();
                     if (ch == '-' && (pos == 0 || "+-*/^%!(),.".indexOf(source.charAt(pos - 1)) != -1)) {
@@ -256,20 +255,11 @@ public class SymbolicCalculator {
                     tokens.add("u-" + raw.get(i + 1)); i++; continue;
                 }
                 tokens.add(cur);
-                if (i + 1 < tokens.size()) {
-                    String prev = tokens.get(i), next = tokens.get(i + 1);
-                    if (prev.equals(")") && next.equals("(")) tokens.add(i + 1, "*");
-                    else if (isNumeric(prev) && (isIdentifier(next) || next.equals("("))) tokens.add(i + 1, "*");
-                    else if (isIdentifier(prev) && (next.equals("(") || isIdentifier(next))) tokens.add(i + 1, "*");
-                    else if (prev.equals(")") && (isNumeric(next) || isIdentifier(next))) tokens.add(i + 1, "*");
-                    else if (prev.equals("]") && (next.equals("[") || isNumeric(next) || isIdentifier(next))) tokens.add(i + 1, "*");
-                    else if (isNumeric(prev) && next.equals("[")) tokens.add(i + 1, "*");
-                }
             }
 
             List<String> finalTokens = new ArrayList<>();
             for (String t : tokens) {
-                if (t.equals("!") && !finalTokens.isEmpty()) {
+                if (t.equals("!") && !finalTokens.isEmpty() && isNumeric(finalTokens.get(finalTokens.size() - 1))) {
                     finalTokens.set(finalTokens.size() - 1, finalTokens.get(finalTokens.size() - 1) + "!");
                 } else {
                     finalTokens.add(t);
@@ -345,21 +335,18 @@ public class SymbolicCalculator {
                     if (r < 0) r += Math.abs(b);
                     return r; 
                 },
-                "^", Math::pow,
-                ".", (a, b) -> a * b // Скалярное произведение векторов (после проверки размерности)
+                "^", Math::pow
         );
 
-        // Вспомогательный метод для тригонометрии с учетом градусов
         private static double applyTrig(double v, java.util.function.Function<Double, Double> func) {
             return func.apply(v);
         }
 
         String getBanner() {
             return """
-                   === Symbolic Engine v2.1 (Vector Algebra Update) ===
+                   === Symbolic Engine v2.1 (Compact) ===
                    Enter expressions. Commands: help, history, clear, mode, vars, exit, del <id>, reset ans, cls
                    Vectors: [1, 2, 3]. Matrices: [[1, 2], [3, 4]].
-                   New: cross (or x), norm, cls
                    """;
         }
 
@@ -380,7 +367,7 @@ public class SymbolicCalculator {
                 if (t.equals("u-")) { 
                     Object a = stack.pop();
                     if (a instanceof Double d) stack.push(-d);
-                    else if (a instanceof Matrix m) stack.push(m.negate());
+                    else if (a instanceof Matrix m) stack.push(m.scale(-1));
                     else throw new IllegalArgumentException("Invalid operand for unary minus");
                     continue; 
                 }
@@ -393,140 +380,81 @@ public class SymbolicCalculator {
                     stack.push(factorial((int) v)); continue;
                 }
                 if (t.equals("det")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("det needs an argument");
                     Object a = stack.pop();
                     if (!(a instanceof Matrix)) throw new IllegalArgumentException("det applies only to matrices");
-                    Matrix m = (Matrix) a;
-                    if (m.rows() == 1) {
-                        stack.push(m.get(0, 0));
-                    } else if (m.rows() == 2) {
-                        stack.push(m.get(0, 0) * m.get(1, 1) - m.get(0, 1) * m.get(1, 0));
-                    } else {
-                        double det = 0;
-                        for (int c = 0; c < m.cols(); c++) {
-                            // Исправлено: вместо Math.pow(-1, c) для исключения NaN
-                            double sign = ((c & 1) == 0) ? 1.0 : -1.0;
-                            det += sign * m.get(0, c) * m.minor(0, c).determinant();
-                        }
-                        stack.push(det);
-                    }
+                    stack.push(((Matrix) a).determinant());
                     continue;
                 }
                 if (t.equals("transpose")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("transpose needs an argument");
                     Object a = stack.pop();
                     if (!(a instanceof Matrix)) throw new IllegalArgumentException("transpose applies only to matrices");
                     stack.push(((Matrix) a).transpose());
                     continue;
                 }
-                if (t.equals("min") || t.equals("max")) {
-                    if (stack.size() < 2) throw new IllegalArgumentException(t + " needs two operands");
-                    Object bObj = stack.pop(), aObj = stack.pop();
-                    if (aObj instanceof Double a && bObj instanceof Double b) {
-                        stack.push(t.equals("min") ? Math.min(a, b) : Math.max(a, b));
-                    } else {
-                        throw new IllegalArgumentException(t + " applies only to scalars");
-                    }
-                    continue;
-                }
                 if (t.equals("cross") || t.equals("x")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException(t + " needs an argument");
                     Object bObj = stack.pop(), aObj = stack.pop();
                     if (aObj instanceof Matrix a && bObj instanceof Matrix b) {
                         stack.push(a.cross(b));
                         continue;
                     }
-                    throw new IllegalArgumentException("Cross product applies only to vectors");
+                    throw new IllegalArgumentException("Cross product applies only to 3D vectors");
                 }
                 if (t.equals("norm")) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException("norm needs an argument");
                     Object aObj = stack.pop();
-                    if (aObj instanceof Matrix a && a.isVector()) {
+                    if (aObj instanceof Matrix a && (a.rows() == 1 || a.cols() == 1)) {
                         stack.push(a.norm());
                         continue;
                     }
                     throw new IllegalArgumentException("Norm applies only to vectors");
                 }
                 if (UNARY.containsKey(t)) {
-                    if (stack.isEmpty()) throw new IllegalArgumentException(t + " needs an argument");
                     Object aObj = stack.pop();
                     if (!(aObj instanceof Double)) throw new IllegalArgumentException(t + " applies only to scalars");
                     double v = (Double) aObj;
-                    // Проверка тригонометрии (если захочешь добавить поддержку градусов внутрь функций)
-                    Double res = UNARY.get(t).apply(v);
-                    if (Double.isInfinite(res)) throw new IllegalArgumentException("Overflow in " + t);
-                    stack.push(res); continue;
+                    stack.push(UNARY.get(t).apply(v));
+                    continue;
                 }
                 if (stack.size() < 2) throw new IllegalArgumentException("Malformed RPN");
                 Object bObj = stack.pop(), aObj = stack.pop();
 
-                // Умножение матрицы на скаляр
-                if (t.equals("*")) {
-                    if (aObj instanceof Double a && bObj instanceof Matrix b) {
-                        stack.push(b.scale(a));
-                        continue;
-                    }
-                    if (aObj instanceof Matrix a && bObj instanceof Double b) {
-                        stack.push(a.scale(b));
-                        continue;
-                    }
-                }
-
-                // Сложение и вычитание (скаляр-скаляр или матрица-матрица)
-                if (t.equals("+") || t.equals("-")) {
-                    if (aObj instanceof Double a && bObj instanceof Double b) {
-                        Double res = switch (t) {
-                            case "+" -> BINARY.get("+").apply(a, b);
-                            case "-" -> BINARY.get("-").apply(a, b);
-                            default -> 0.0;
-                        };
-                        stack.push(res);
-                        continue;
-                    }
-                    if (aObj instanceof Matrix a && bObj instanceof Matrix b) {
-                        if (t.equals("+")) stack.push(a.add(b));
-                        else stack.push(a.subtract(b));
-                        continue;
-                    }
-                }
-
-                // Скалярное произведение векторов
-                if (t.equals(".")) {
-                    if (aObj instanceof Matrix a && bObj instanceof Matrix b) {
-                        if (!a.isVector() || !b.isVector() || a.cols() != b.cols()) {
-                            throw new IllegalArgumentException("Dot product requires vectors of same size");
-                        }
-                        double sum = 0;
-                        for (int i = 0; i < a.cols(); i++) {
-                            sum += a.get(0, i) * b.get(0, i);
-                        }
-                        stack.push(sum);
-                        continue;
-                    }
-                }
-
-                // Умножение матриц
-                if (t.equals("*")) {
-                    if (aObj instanceof Matrix a && bObj instanceof Matrix b) {
-                        stack.push(a.multiply(b));
-                        continue;
-                    }
-                }
-
-                // Если типы не подошли под специфику матриц, пробуем стандартную бинарную операцию для скаляров
                 if (aObj instanceof Double a && bObj instanceof Double b) {
                     Double res = switch (t) {
-                        case "+" -> BINARY.get("+").apply(a, b);
-                        case "-" -> BINARY.get("-").apply(a, b);
-                        case "*" -> BINARY.get("*").apply(a, b);
-                        case "/" -> BINARY.get("/").apply(a, b);
-                        case "//" -> BINARY.get("//").apply(a, b);
-                        case "%" -> BINARY.get("%").apply(a, b);
-                        case "^" -> BINARY.get("^").apply(a, b);
+                        case "+", "-", "*", "/", "//", "%", "^" -> BINARY.get(t).apply(a, b);
+                        case "." -> a * b;
                         default -> throw new IllegalArgumentException("Unknown operator: " + t);
                     };
                     if (Double.isInfinite(res)) throw new IllegalArgumentException("Overflow in " + t);
                     stack.push(res);
+                    continue;
+                }
+
+                if (aObj instanceof Matrix ma && bObj instanceof Matrix mb) {
+                    return switch (t) {
+                        case "+" -> ma.add(mb);
+                        case "-" -> ma.subtract(mb);
+                        case "*" -> ma.multiply(mb);
+                        case "." -> {
+                            if (!ma.isVector() || !mb.isVector() || ma.cols() != mb.cols()) {
+                                throw new IllegalArgumentException("Dot product requires vectors of same size");
+                            }
+                            double sum = 0;
+                            for (int i = 0; i < ma.cols(); i++) {
+                                sum += ma.get(0, i) * mb.get(0, i);
+                            }
+                            yield sum;
+                        }
+                        default -> throw new IllegalArgumentException("Matrix op: " + t);
+                    };
+                }
+
+                if (aObj instanceof Double k && bObj instanceof Matrix m) {
+                    if (t.equals("*")) stack.push(m.scale(k));
+                    else throw new IllegalArgumentException("Matrix-scalar op: " + t);
+                    continue;
+                }
+                if (aObj instanceof Matrix m && bObj instanceof Double k) {
+                    if (t.equals("*")) stack.push(m.scale(k));
+                    else throw new IllegalArgumentException("Matrix-scalar op: " + t);
                     continue;
                 }
 
@@ -537,18 +465,12 @@ public class SymbolicCalculator {
         }
 
         private double factorial(int n) {
-            BigInteger acc = BigInteger.ONE;
-            for (int i = 2; i <= n; i++) acc = acc.multiply(BigInteger.valueOf(i));
-            return acc.doubleValue();
-        }
-
-        // Обертка для тригонометрии (если решишь делать режим DEG внутри функций, а не на уровне парсера)
-        private static double applyTrig(double v, java.util.function.Function<Double, Double> func) {
-            return func.apply(v);
+            long acc = 1;
+            for (int i = 2; i <= n; i++) acc *= i;
+            return (double) acc;
         }
     }
 
-    // Вспомогательный класс для работы с матрицами и векторами
     private static class Matrix {
         private final List<List<Double>> data;
 
@@ -563,10 +485,6 @@ public class SymbolicCalculator {
 
         int rows() { return data.size(); }
         int cols() { return data.get(0).size(); }
-
-        boolean isVector() {
-            return rows() == 1 || cols() == 1;
-        }
 
         double get(int r, int c) {
             return data.get(r).get(c);
@@ -610,10 +528,6 @@ public class SymbolicCalculator {
             return new Matrix(res);
         }
 
-        Matrix negate() {
-            return scale(-1);
-        }
-
         Matrix multiply(Matrix other) {
             if (cols() != other.rows()) throw new IllegalArgumentException("Dimension mismatch for *");
             List<List<Double>> res = new ArrayList<>();
@@ -643,9 +557,8 @@ public class SymbolicCalculator {
             return new Matrix(res);
         }
 
-        // Векторное произведение (только для 3D)
         public Matrix cross(Matrix other) {
-            if (!this.isVector() || !other.isVector() || this.cols() != 3 || other.cols() != 3) {
+            if (this.cols() != 3 || other.cols() != 3) {
                 throw new IllegalArgumentException("Cross product is defined only for 3D vectors");
             }
             double x1 = this.get(0, 0), y1 = this.get(0, 1), z1 = this.get(0, 2);
@@ -656,9 +569,7 @@ public class SymbolicCalculator {
             return new Matrix(res);
         }
 
-        // Евклидова норма (длина) вектора
         public double norm() {
-            if (!isVector()) throw new IllegalArgumentException("Norm applies only to vectors");
             double sum = 0;
             for (int i = 0; i < cols(); i++) {
                 sum += Math.pow(get(0, i), 2);
@@ -673,7 +584,6 @@ public class SymbolicCalculator {
             
             double det = 0;
             for (int c = 0; c < cols(); c++) {
-                // Исправлено: побитовая логика вместо Math.pow для исключения NaN
                 double sign = ((c & 1) == 0) ? 1.0 : -1.0;
                 det += sign * data.get(0).get(c) * minor(0, c).determinant();
             }
@@ -697,20 +607,17 @@ public class SymbolicCalculator {
         @Override
         public String toString() {
             if (rows() == 1) {
-                // Вектор-строка
-                return "[" + String.join(", ", data.get(0).stream().map(d -> SymbolicCalculator.this.formatter.format(d)).toList()) + "]";
-            } else {
-                // Матрица
-                StringBuilder sb = new StringBuilder();
-                sb.append("[\n");
-                for (List<Double> row : data) {
-                    sb.append("  [")
-                      .append(String.join(", ", row.stream().map(d -> SymbolicCalculator.this.formatter.format(d)).toList()))
-                      .append("]\n");
-                }
-                sb.append("]");
-                return sb.toString();
+                return "[" + String.join(", ", data.get(0).stream().map(formatter::format).toList()) + "]";
             }
+            StringBuilder sb = new StringBuilder();
+            sb.append("[\n");
+            for (List<Double> row : data) {
+                sb.append("  [")
+                  .append(String.join(", ", row.stream().map(formatter::format).toList()))
+                  .append("]\n");
+            }
+            sb.append("]");
+            return sb.toString();
         }
     }
 }
