@@ -8,11 +8,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.Set;
-import java.util.function.BiFunction;
-import java.util.function.Function;
-
-import static java.lang.Math.toRadians;
 
 public class SymbolicCalculator {
 
@@ -192,8 +187,7 @@ public class SymbolicCalculator {
         String format(double v) {
             if (Double.isNaN(v)) return "NaN";
             if (Double.isInfinite(v)) return "Infinity";
-            String s = df.format(v);
-            return s.endsWith(".") ? s.substring(0, s.length() - 1) : s;
+            return df.format(v).replaceAll("\\.0*$", "");
         }
     }
 
@@ -319,8 +313,8 @@ public class SymbolicCalculator {
 
     private static class Executor {
         private static final Map<String, Function<Double, Double>> UNARY = Map.of(
-                "sin", v -> applyTrig(v, Math::sin), "cos", v -> applyTrig(v, Math::cos), "tan", v -> applyTrig(v, Math::tan),
-                "asin", v -> applyTrig(v, Math::asin), "acos", v -> applyTrig(v, Math::acos), "atan", v -> applyTrig(v, Math::atan),
+                "sin", v -> Math.sin(v), "cos", v -> Math.cos(v), "tan", v -> Math.tan(v),
+                "asin", v -> Math.asin(v), "acos", v -> Math.acos(v), "atan", v -> Math.atan(v),
                 "sinh", v -> Math.sinh(v), "cosh", v -> Math.cosh(v), "tanh", v -> Math.tanh(v),
                 "sqrt", v -> Math.sqrt(v), "ln", v -> Math.log(v), "log", v -> Math.log(v),
                 "log10", v -> Math.log10(v), "abs", v -> Math.abs(v)
@@ -338,10 +332,6 @@ public class SymbolicCalculator {
                 "^", Math::pow
         );
 
-        private static double applyTrig(double v, java.util.function.Function<Double, Double> func) {
-            return func.apply(v);
-        }
-
         String getBanner() {
             return """
                    === Symbolic Engine v2.1 (Compact) ===
@@ -353,17 +343,6 @@ public class SymbolicCalculator {
         Object resolve(List<String> rpn, Function<String, Object> lookup) {
             Deque<Object> stack = new ArrayDeque<>();
             for (String t : rpn) {
-                if (t.startsWith("u-") && parser.isNumeric(t.substring(2))) {
-                    stack.push(-Double.parseDouble(t.substring(2))); continue;
-                }
-                if (parser.isNumeric(t)) { stack.push(Double.parseDouble(t)); continue; }
-                if (parser.isIdentifier(t)) { 
-                    Object val = lookup.apply(t); 
-                    if (val == null) throw new IllegalArgumentException("Unknown: " + t); 
-                    stack.push(val); 
-                    continue; 
-                }
-
                 if (t.equals("u-")) { 
                     Object a = stack.pop();
                     if (a instanceof Double d) stack.push(-d);
@@ -373,7 +352,7 @@ public class SymbolicCalculator {
                 }
                 if (t.endsWith("!")) {
                     String num = t.substring(0, t.length() - 1);
-                    if (!parser.isNumeric(num)) throw new IllegalArgumentException("Factorial on non-numeric");
+                    if (!new ExpressionParser().isNumeric(num)) throw new IllegalArgumentException("Factorial on non-numeric");
                     double v = Double.parseDouble(num);
                     if (v < 0 || v != Math.floor(v)) throw new IllegalArgumentException("Factorial domain error");
                     if (v > 20) throw new IllegalArgumentException("Factorial overflow");
@@ -410,8 +389,7 @@ public class SymbolicCalculator {
                 if (UNARY.containsKey(t)) {
                     Object aObj = stack.pop();
                     if (!(aObj instanceof Double)) throw new IllegalArgumentException(t + " applies only to scalars");
-                    double v = (Double) aObj;
-                    stack.push(UNARY.get(t).apply(v));
+                    stack.push(UNARY.get(t).apply((Double) aObj));
                     continue;
                 }
                 if (stack.size() < 2) throw new IllegalArgumentException("Malformed RPN");
@@ -561,12 +539,11 @@ public class SymbolicCalculator {
             if (this.cols() != 3 || other.cols() != 3) {
                 throw new IllegalArgumentException("Cross product is defined only for 3D vectors");
             }
-            double x1 = this.get(0, 0), y1 = this.get(0, 1), z1 = this.get(0, 2);
-            double x2 = other.get(0, 0), y2 = other.get(0, 1), z2 = other.get(0, 2);
-            List<List<Double>> res = List.of(
-                List.of(y1 * z2 - z1 * y2, z1 * x2 - x1 * z2, x1 * y2 - y1 * x2)
-            );
-            return new Matrix(res);
+            return new Matrix(List.of(List.of(
+                data.get(0).get(1) * other.data.get(0).get(2) - data.get(0).get(2) * other.data.get(0).get(1),
+                data.get(0).get(2) * other.data.get(0).get(0) - data.get(0).get(0) * other.data.get(0).get(2),
+                data.get(0).get(0) * other.data.get(0).get(1) - data.get(0).get(1) * other.data.get(0).get(0)
+            )));
         }
 
         public double norm() {
@@ -604,16 +581,20 @@ public class SymbolicCalculator {
             return new Matrix(res);
         }
 
+        boolean isVector() {
+            return rows() == 1 || cols() == 1;
+        }
+
         @Override
         public String toString() {
             if (rows() == 1) {
-                return "[" + String.join(", ", data.get(0).stream().map(formatter::format).toList()) + "]";
+                return "[" + String.join(", ", data.get(0).stream().map(v -> new NumberFormatter().format(v)).toList()) + "]";
             }
             StringBuilder sb = new StringBuilder();
             sb.append("[\n");
             for (List<Double> row : data) {
                 sb.append("  [")
-                  .append(String.join(", ", row.stream().map(formatter::format).toList()))
+                  .append(String.join(", ", row.stream().map(v -> new NumberFormatter().format(v)).toList()))
                   .append("]\n");
             }
             sb.append("]");
