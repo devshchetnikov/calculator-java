@@ -8,6 +8,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.Set;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 
 public class SymbolicCalculator {
 
@@ -196,7 +199,7 @@ public class SymbolicCalculator {
                 "+", 1, "-", 1, "*", 2, "/", 2, "%", 2, "//", 2, "^", 3, "u-", 4, "!", 5
         );
         private static final Set<String> FUNCTIONS = Set.of(
-                "sin", "cos", "tan", "sqrt", "log", "log10", "ln", "min", "max", "abs", "asin", "acos", "atan", "sinh", "cosh", "tanh", "det", "transpose", "cross", "x", "norm"
+                "sin", "cos", "tan", "sqrt", "log", "log10", "ln", "min", "max", "abs", "asin", "acos", "atan", "sinh", "cosh", "tanh", "det", "transpose", "cross", "x", "norm", "gcd", "lcm"
         );
 
         List<String> ingest(String source) {
@@ -317,7 +320,9 @@ public class SymbolicCalculator {
                 "asin", v -> Math.asin(v), "acos", v -> Math.acos(v), "atan", v -> Math.atan(v),
                 "sinh", v -> Math.sinh(v), "cosh", v -> Math.cosh(v), "tanh", v -> Math.tanh(v),
                 "sqrt", v -> Math.sqrt(v), "ln", v -> Math.log(v), "log", v -> Math.log(v),
-                "log10", v -> Math.log10(v), "abs", v -> Math.abs(v)
+                "log10", v -> Math.log10(v), "abs", v -> Math.abs(v),
+                "gcd", v -> { throw new IllegalArgumentException("gcd requires two arguments"); },
+                "lcm", v -> { throw new IllegalArgumentException("lcm requires two arguments"); }
         );
         private static final Map<String, BiFunction<Double, Double, Double>> BINARY = Map.of(
                 "+", Double::sum, "-", (a, b) -> a - b, "*", (a, b) -> a * b,
@@ -386,6 +391,33 @@ public class SymbolicCalculator {
                     }
                     throw new IllegalArgumentException("Norm applies only to vectors");
                 }
+                if (t.equals("gcd") || t.equals("lcm")) {
+                    Object bObj = stack.pop();
+                    Object aObj = stack.pop();
+
+                    if (!(aObj instanceof Double) || !(bObj instanceof Double)) {
+                        throw new IllegalArgumentException(t + " applies only to scalars");
+                    }
+
+                    double a = (Double) aObj;
+                    double b = (Double) bObj;
+
+                    if (a <= 0 || b <= 0 || a != Math.floor(a) || b != Math.floor(b)) {
+                        throw new IllegalArgumentException(t + " domain error: arguments must be positive integers");
+                    }
+
+                    long ai = (long) a;
+                    long bi = (long) b;
+                    long res;
+
+                    if (t.equals("gcd")) {
+                        res = gcd(ai, bi);
+                    } else {
+                        res = lcm(ai, bi);
+                    }
+                    stack.push((double) res);
+                    continue;
+                }
                 if (UNARY.containsKey(t)) {
                     Object aObj = stack.pop();
                     if (!(aObj instanceof Double)) throw new IllegalArgumentException(t + " applies only to scalars");
@@ -446,6 +478,20 @@ public class SymbolicCalculator {
             long acc = 1;
             for (int i = 2; i <= n; i++) acc *= i;
             return (double) acc;
+        }
+
+        private long gcd(long a, long b) {
+            while (b != 0) {
+                long temp = b;
+                b = a % b;
+                a = temp;
+            }
+            return a;
+        }
+
+        private long lcm(long a, long b) {
+            if (a == 0 || b == 0) return 0;
+            return Math.abs(a / gcd(a, b) * b);
         }
     }
 
