@@ -1,5 +1,6 @@
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
 import java.util.Map;
 
 public class SymbolicCalculator {
@@ -46,6 +47,8 @@ public class SymbolicCalculator {
                                 } else if (value instanceof Matrix m) {
                                     System.out.println("=> " + m);
                                     commandLog.add(line + " = " + m);
+                                } else if (value instanceof Complex c) {
+                                    logResult(line, c);
                                 }
                             } catch (Exception ex) {
                                 System.err.println("! " + ex.getMessage());
@@ -74,6 +77,9 @@ public class SymbolicCalculator {
                 context.put(key, m);
                 System.out.println(key + " -> " + m);
                 commandLog.add(input + " (Result: " + m + ")");
+            } else if (val instanceof Complex c) {
+                context.put(key, c);
+                logResult(key + " = " + expr, c);
             }
         } catch (Exception ex) {
             System.err.println("! " + ex.getMessage());
@@ -123,6 +129,7 @@ public class SymbolicCalculator {
         context.forEach((k, v) -> {
             if (v instanceof Double d) System.out.println(k + " = " + formatDouble(d));
             else if (v instanceof Matrix m) System.out.println(k + " = " + m);
+            else if (v instanceof Complex c) System.out.println(k + " = " + c);
         });
     }
 
@@ -134,6 +141,14 @@ public class SymbolicCalculator {
         lastResult = d;
     }
 
+    private void logResult(String expr, Complex c) {
+        System.out.println("=> " + c);
+        commandLog.add(expr + " = " + c);
+        // Обновляем ans только вещественной частью для обратной совместимости,
+        // либо можно хранить Complex, если изменить тип lastResult
+        lastResult = c.re;
+    }
+
     private static String formatDouble(double v) {
         if (Double.isNaN(v)) return "NaN";
         if (Double.isInfinite(v)) return "Infinity";
@@ -141,8 +156,38 @@ public class SymbolicCalculator {
     }
 
     private static void clearScreen() {
-        System.out.print("\033[H\033[2J");
+        System.out.print("\033[H\033[2J\n");
         System.out.flush();
+    }
+
+    // --- NEW CLASS: Complex ---
+    private static class Complex {
+        final double re;
+        final double im;
+
+        Complex(double re, double im) {
+            this.re = re;
+            this.im = im;
+        }
+
+        Complex add(Complex o) { return new Complex(re + o.re, im + o.im); }
+        Complex sub(Complex o) { return new Complex(re - o.re, im - o.im); }
+        Complex mul(Complex o) { return new Complex(re * o.re - im * o.im, re * o.im + im * o.re); }
+        Complex div(Complex o) {
+            double denom = o.re * o.re + o.im * o.im;
+            if (denom == 0) throw new IllegalArgumentException("Division by zero");
+            return new Complex((re * o.re + im * o.im) / denom, (im * o.re - re * o.im) / denom);
+        }
+        Complex conj() { return new Complex(re, -im); }
+        double abs() { return Math.hypot(re, im); }
+
+        @Override
+        public String toString() {
+            if (im == 0) return formatDouble(re);
+            if (re == 0) return formatDouble(im) + "i";
+            if (im < 0) return formatDouble(re) + " - " + formatDouble(-im) + "i";
+            return formatDouble(re) + " + " + formatDouble(im) + "i";
+        }
     }
 
     private static class Executor {
@@ -150,7 +195,8 @@ public class SymbolicCalculator {
             "sin", v -> Math.sin(v), "cos", v -> Math.cos(v), "tan", v -> Math.tan(v),
             "asin", v -> Math.asin(v), "acos", v -> Math.acos(v), "atan", v -> Math.atan(v),
             "sinh", v -> Math.sinh(v), "cosh", v -> Math.cosh(v), "tanh", v -> Math.tanh(v),
-            "sqrt", v -> Math.sqrt(v), "ln", v -> Math.log(v), "log10", v -> Math.log10(v), "abs", v -> Math.abs(v)
+            "sqrt", v -> Math.sqrt(v), "ln", v -> Math.log(v), "log10", v -> Math.log10(v), "abs", v -> Math.abs(v),
+            "re", c -> ((Complex) c).re, "im", c -> ((Complex) c).im, "conj", c -> ((Complex) c).conj()
         );
         private static final Map<String, Double> BINARY = Map.of(
             "+", (a, b) -> a + b, "-", (a, b) -> a - b, "*", (a, b) -> a * b,
@@ -165,6 +211,7 @@ public class SymbolicCalculator {
                    === Symbolic Engine v2.1 (Compact) ===
                    Enter expressions. Commands: help, history, clear, mode, vars, exit, del <id>, reset ans, cls
                    Vectors: [1, 2, 3]. Matrices: [[1, 2], [3, 4]].
+                   Complex: 3+4i, re(5i), abs(-3+4i)
                    """;
         }
 
@@ -185,10 +232,26 @@ public class SymbolicCalculator {
                     tokens.add(sb.toString()); i--;
                     continue;
                 }
+                if (ch == 'i') {
+                    tokens.add("i");
+                    continue;
+                }
                 if (Character.isLetter(ch)) {
                     var sb = new StringBuilder();
                     while (i < source.length() && Character.isLetterOrDigit(source.charAt(i))) sb.append(source.charAt(i++));
-                    tokens.add(sb.toString().toLowerCase()); i--;
+                    String word = sb.toString().toLowerCase();
+                    // Обработка мнимой части вида "3i" или "-2i"
+                    if (word.endsWith("i")) {
+                        String numPart = word.substring(0, word.length() - 1);
+                        if (numPart.isEmpty()) tokens.add("i");
+                        else if (numPart.equals("-")) tokens.add("-i");
+                        else if (numPart.equals("+")) tokens.add("i");
+                        else tokens.add(numPart); // число уйдет в стек, а 'i' добавится следующим токеном
+                        tokens.add("i");
+                    } else {
+                        tokens.add(word);
+                    }
+                    i--;
                     continue;
                 }
                 throw new IllegalArgumentException("Unknown glyph: " + ch);
@@ -199,9 +262,28 @@ public class SymbolicCalculator {
         static Object resolve(List<String> rpn, java.util.function.Function<String, Object> lookup) {
             Deque<Object> stack = new ArrayDeque<>();
             for (String t : rpn) {
-                if (t.equals("u-")) { Object a = stack.pop(); stack.push(a instanceof Double d ? -d : ((Matrix) a).scale(-1)); continue; }
+                if (t.equals("u-")) { 
+                    Object a = stack.pop(); 
+                    stack.push(a instanceof Double d ? -d : a instanceof Complex c ? new Complex(-c.re, -c.im) : ((Matrix) a).scale(-1)); 
+                    continue; 
+                }
                 if (t.equals("ans")) { stack.push(lookup.apply(t)); continue; }
-                if (UNARY.containsKey(t)) { Object a = stack.pop(); stack.push(UNARY.get(t).apply((Double) a)); continue; }
+                if (t.equals("i")) { stack.push(new Complex(0, 1)); continue; }
+
+                if (UNARY.containsKey(t)) { 
+                    Object a = stack.pop(); 
+                    if (a instanceof Complex c) {
+                        if (t.equals("abs")) {
+                            stack.push(c.abs());
+                        } else {
+                            stack.push(UNARY.get(t).apply(c));
+                        }
+                    } else {
+                        stack.push(UNARY.get(t).apply((Double) a));
+                    }
+                    continue; 
+                }
+
                 if (t.equals("fact")) { Object a = stack.pop(); double v = (Double) a; if (v < 0 || v != Math.floor(v)) throw new IllegalArgumentException("Factorial domain error"); stack.push(factorial((int) v)); continue; }
                 if (t.equals("gcd") || t.equals("lcm")) { Object b = stack.pop(), a = stack.pop(); long ai = (long)(Double)a, bi = (long)(Double)b; stack.push(t.equals("gcd") ? (double) gcd(ai, bi) : (double) lcm(ai, bi)); continue; }
                 if (t.equals("det")) { Object a = stack.pop(); stack.push(((Matrix) a).determinant()); continue; }
@@ -210,6 +292,37 @@ public class SymbolicCalculator {
                 if (t.equals("norm")) { Object a = stack.pop(); stack.push(((Matrix) a).norm()); continue; }
 
                 Object bObj = stack.pop(), aObj = stack.pop();
+
+                // Complex arithmetic
+                if (aObj instanceof Complex ca) {
+                    Complex cb = (bObj instanceof Complex c) ? c : new Complex((Double) bObj, 0);
+                    Complex res = switch (t) {
+                        case "+" -> ca.add(cb);
+                        case "-" -> ca.sub(cb);
+                        case "*" -> ca.mul(cb);
+                        case "/" -> ca.div(cb);
+                        case "^" -> throw new IllegalArgumentException("Complex exponentiation not supported in RPN yet");
+                        default -> throw new IllegalArgumentException("Unknown operator for complex: " + t);
+                    };
+                    stack.push(res);
+                    continue;
+                }
+                if (bObj instanceof Complex) {
+                    // a is Double, b is Complex
+                    Complex ca = new Complex((Double) aObj, 0);
+                    Complex cb = (Complex) bObj;
+                    Complex res = switch (t) {
+                        case "+" -> ca.add(cb);
+                        case "-" -> ca.sub(cb);
+                        case "*" -> ca.mul(cb);
+                        case "/" -> ca.div(cb);
+                        default -> throw new IllegalArgumentException("Unknown operator for complex: " + t);
+                    };
+                    stack.push(res);
+                    continue;
+                }
+
+                // Original Double and Matrix logic
                 if (aObj instanceof Double a && bObj instanceof Double b) {
                     Double res = switch (t) {
                         case "+", "-", "*", "/", "//", "%", "^" -> BINARY.get(t).apply(a, b);
