@@ -144,8 +144,6 @@ public class SymbolicCalculator {
     private void logResult(String expr, Complex c) {
         System.out.println("=> " + c);
         commandLog.add(expr + " = " + c);
-        // Обновляем ans только вещественной частью для обратной совместимости,
-        // либо можно хранить Complex, если изменить тип lastResult
         lastResult = c.re;
     }
 
@@ -246,7 +244,7 @@ public class SymbolicCalculator {
                         if (numPart.isEmpty()) tokens.add("i");
                         else if (numPart.equals("-")) tokens.add("-i");
                         else if (numPart.equals("+")) tokens.add("i");
-                        else tokens.add(numPart); // число уйдет в стек, а 'i' добавится следующим токеном
+                        else tokens.add(numPart); 
                         tokens.add("i");
                     } else {
                         tokens.add(word);
@@ -308,7 +306,6 @@ public class SymbolicCalculator {
                     continue;
                 }
                 if (bObj instanceof Complex) {
-                    // a is Double, b is Complex
                     Complex ca = new Complex((Double) aObj, 0);
                     Complex cb = (Complex) bObj;
                     Complex res = switch (t) {
@@ -322,7 +319,28 @@ public class SymbolicCalculator {
                     continue;
                 }
 
-                // Original Double and Matrix logic
+                // Vector and Matrix logic
+                if (aObj instanceof Matrix ma && bObj instanceof Matrix mb) {
+                    // Vector operations (1D matrices)
+                    if (ma.rows() == 1 && mb.rows() == 1) {
+                        return switch (t) {
+                            case "+" -> ma.add(mb);
+                            case "-" -> ma.subtract(mb);
+                            case "." -> dot(ma, mb); // Scalar product
+                            default -> throw new IllegalArgumentException("Vector op: " + t);
+                        };
+                    }
+                    // Matrix operations
+                    return switch (t) {
+                        case "+" -> ma.add(mb); 
+                        case "-" -> ma.subtract(mb); 
+                        case "*" -> ma.multiply(mb); 
+                        case "." -> dot(ma, mb);
+                        default -> throw new IllegalArgumentException("Matrix op: " + t);
+                    };
+                }
+                if (aObj instanceof Double k && bObj instanceof Matrix m) { stack.push(m.scale(k)); continue; }
+                if (aObj instanceof Matrix m && bObj instanceof Double k) { stack.push(m.scale(k)); continue; }
                 if (aObj instanceof Double a && bObj instanceof Double b) {
                     Double res = switch (t) {
                         case "+", "-", "*", "/", "//", "%", "^" -> BINARY.get(t).apply(a, b);
@@ -333,14 +351,6 @@ public class SymbolicCalculator {
                     stack.push(res);
                     continue;
                 }
-                if (aObj instanceof Matrix ma && bObj instanceof Matrix mb) {
-                    return switch (t) {
-                        case "+" -> ma.add(mb); case "-" -> ma.subtract(mb); case "*" -> ma.multiply(mb); case "." -> dot(ma, mb);
-                        default -> throw new IllegalArgumentException("Matrix op: " + t);
-                    };
-                }
-                if (aObj instanceof Double k && bObj instanceof Matrix m) { stack.push(m.scale(k)); continue; }
-                if (aObj instanceof Matrix m && bObj instanceof Double k) { stack.push(m.scale(k)); continue; }
                 throw new IllegalArgumentException("Type mismatch for operator: " + t);
             }
             return stack.pop();
@@ -349,21 +359,86 @@ public class SymbolicCalculator {
         private static double factorial(int n) { long acc = 1; for (int i = 2; i <= n; i++) acc *= i; return (double) acc; }
         private static long gcd(long a, long b) { while (b != 0) { long t = b; b = a % b; a = t; } return a; }
         private static long lcm(long a, long b) { return a == 0 || b == 0 ? 0 : Math.abs(a / gcd(a, b) * b); }
-        private static double dot(Matrix a, Matrix b) { double sum = 0; for (int i = 0; i < a.cols(); i++) sum += a.get(0, i) * b.get(0, i); return sum; }
+        private static double dot(Matrix a, Matrix b) { 
+            if (a.cols() != b.cols()) throw new IllegalArgumentException("Vector dimensions must match");
+            double sum = 0; 
+            for (int i = 0; i < a.cols(); i++) sum += a.get(0, i) * b.get(0, i); 
+            return sum; 
+        }
     }
 
     private static class Matrix {
         private final List<List<Double>> data;
-        Matrix(List<List<Double>> data) { if (data.isEmpty() || data.get(0).isEmpty()) throw new IllegalArgumentException("Empty matrix"); int cols = data.get(0).size(); for (List<Double> r : data) if (r.size() != cols) throw new IllegalArgumentException("Jagged matrix"); this.data = data; }
-        int rows() { return data.size(); } int cols() { return data.get(0).size(); }
+        Matrix(List<List<Double>> data) { 
+            if (data.isEmpty() || data.get(0).isEmpty()) throw new IllegalArgumentException("Empty matrix"); 
+            int cols = data.get(0).size(); 
+            for (List<Double> r : data) if (r.size() != cols) throw new IllegalArgumentException("Jagged matrix"); 
+            this.data = data; 
+        }
+        int rows() { return data.size(); } 
+        int cols() { return data.get(0).size(); }
         double get(int r, int c) { return data.get(r).get(c); }
-        Matrix add(Matrix o) { List<List<Double>> res = new java.util.ArrayList<>(); for (int i = 0; i < rows(); i++) { List<Double> row = new java.util.ArrayList<>(); for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) + o.data.get(i).get(j)); res.add(row); } return new Matrix(res); }
-        Matrix subtract(Matrix o) { List<List<Double>> res = new java.util.ArrayList<>(); for (int i = 0; i < rows(); i++) { List<Double> row = new java.util.ArrayList<>(); for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) - o.data.get(i).get(j)); res.add(row); } return new Matrix(res); }
-        Matrix scale(double k) { List<List<Double>> res = new java.util.ArrayList<>(); for (int i = 0; i < rows(); i++) { List<Double> row = new java.util.ArrayList<>(); for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) * k); res.add(row); } return new Matrix(res); }
-        Matrix multiply(Matrix o) { List<List<Double>> res = new java.util.ArrayList<>(); for (int i = 0; i < rows(); i++) { List<Double> row = new java.util.ArrayList<>(); for (int j = 0; j < o.cols(); j++) { double sum = 0; for (int k = 0; k < cols(); k++) sum += data.get(i).get(k) * o.data.get(k).get(j); row.add(sum); } res.add(row); } return new Matrix(res); }
-        Matrix transpose() { List<List<Double>> res = new java.util.ArrayList<>(); for (int j = 0; j < cols(); j++) { List<Double> col = new java.util.ArrayList<>(); for (int i = 0; i < rows(); i++) col.add(data.get(i).get(j)); res.add(col); } return new Matrix(res); }
-        Matrix cross(Matrix o) { return new Matrix(List.of(List.of(data.get(0).get(1) * o.data.get(0).get(2) - data.get(0).get(2) * o.data.get(0).get(1), data.get(0).get(2) * o.data.get(0).get(0) - data.get(0).get(0) * o.data.get(0).get(2), data.get(0).get(0) * o.data.get(0).get(1) - data.get(0).get(1) * o.data.get(0).get(0)))); }
-        double norm() { double sum = 0; for (int i = 0; i < cols(); i++) sum += Math.pow(get(0, i), 2); return Math.sqrt(sum); }
+        Matrix add(Matrix o) { 
+            List<List<Double>> res = new java.util.ArrayList<>(); 
+            for (int i = 0; i < rows(); i++) { 
+                List<Double> row = new java.util.ArrayList<>(); 
+                for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) + o.data.get(i).get(j)); 
+                res.add(row); 
+            } 
+            return new Matrix(res); 
+        }
+        Matrix subtract(Matrix o) { 
+            List<List<Double>> res = new java.util.ArrayList<>(); 
+            for (int i = 0; i < rows(); i++) { 
+                List<Double> row = new java.util.ArrayList<>(); 
+                for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) - o.data.get(i).get(j)); 
+                res.add(row); 
+            } 
+            return new Matrix(res); 
+        }
+        Matrix scale(double k) { 
+            List<List<Double>> res = new java.util.ArrayList<>(); 
+            for (int i = 0; i < rows(); i++) { 
+                List<Double> row = new java.util.ArrayList<>(); 
+                for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) * k); 
+                res.add(row); 
+            } 
+            return new Matrix(res); 
+        }
+        Matrix multiply(Matrix o) { 
+            List<List<Double>> res = new java.util.ArrayList<>(); 
+            for (int i = 0; i < rows(); i++) { 
+                List<Double> row = new java.util.ArrayList<>(); 
+                for (int j = 0; j < o.cols(); j++) { 
+                    double sum = 0; 
+                    for (int k = 0; k < cols(); k++) sum += data.get(i).get(k) * o.data.get(k).get(j); 
+                    row.add(sum); 
+                } 
+                res.add(row); 
+            } 
+            return new Matrix(res); 
+        }
+        Matrix transpose() { 
+            List<List<Double>> res = new java.util.ArrayList<>(); 
+            for (int j = 0; j < cols(); j++) { 
+                List<Double> col = new java.util.ArrayList<>(); 
+                for (int i = 0; i < rows(); i++) col.add(data.get(i).get(j)); 
+                res.add(col); 
+            } 
+            return new Matrix(res); 
+        }
+        Matrix cross(Matrix o) { 
+            return new Matrix(List.of(List.of(
+                data.get(0).get(1) * o.data.get(0).get(2) - data.get(0).get(2) * o.data.get(0).get(1), 
+                data.get(0).get(2) * o.data.get(0).get(0) - data.get(0).get(0) * o.data.get(0).get(2), 
+                data.get(0).get(0) * o.data.get(0).get(1) - data.get(0).get(1) * o.data.get(0).get(0)
+            )));
+        }
+        double norm() { 
+            double sum = 0; 
+            for (int i = 0; i < cols(); i++) sum += Math.pow(get(0, i), 2); 
+            return Math.sqrt(sum); 
+        }
         Double determinant() {
             if (rows() != cols()) throw new IllegalArgumentException("Determinant is defined only for square matrices");
             if (rows() == 1) return data.get(0).get(0);
@@ -374,9 +449,33 @@ public class SymbolicCalculator {
                 double g = data.get(2).get(0), h = data.get(2).get(1), i = data.get(2).get(2);
                 return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
             }
-            double det = 0; for (int c = 0; c < cols(); c++) { double sign = (c % 2 == 0) ? 1 : -1; det += sign * data.get(0).get(c) * minor(0, c).determinant(); } return det;
+            double det = 0; 
+            for (int c = 0; c < cols(); c++) { 
+                double sign = (c % 2 == 0) ? 1 : -1; 
+                det += sign * data.get(0).get(c) * minor(0, c).determinant(); 
+            } 
+            return det;
         }
-        private Matrix minor(int r, int c) { List<List<Double>> res = new java.util.ArrayList<>(); for (int i = 0; i < rows(); i++) { if (i == r) continue; List<Double> row = new java.util.ArrayList<>(); for (int j = 0; j < cols(); j++) { if (j == c) continue; row.add(data.get(i).get(j)); } res.add(row); } return new Matrix(res); }
-        @Override public String toString() { if (rows() == 1) return "[" + String.join(", ", data.get(0()).stream().map(v -> formatDouble(v)).toList()) + "]"; var sb = new StringBuilder(); sb.append("[\n"); for (List<Double> row : data) sb.append("  [").append(String.join(", ", row.stream().map(v -> formatDouble(v)).toList())).append("]\n"); sb.append("]"); return sb.toString(); }
+        private Matrix minor(int r, int c) { 
+            List<List<Double>> res = new java.util.ArrayList<>(); 
+            for (int i = 0; i < rows(); i++) { 
+                if (i == r) continue; 
+                List<Double> row = new java.util.ArrayList<>(); 
+                for (int j = 0; j < cols(); j++) { 
+                    if (j == c) continue; 
+                    row.add(data.get(i).get(j)); 
+                } 
+                res.add(row); 
+            } 
+            return new Matrix(res); 
+        }
+        @Override public String toString() { 
+            if (rows() == 1) return "[" + String.join(", ", data.get(0()).stream().map(v -> formatDouble(v)).toList()) + "]";
+            var sb = new StringBuilder(); 
+            sb.append("[\n"); 
+            for (List<Double> row : data) sb.append("  [").append(String.join(", ", row.stream().map(v -> formatDouble(v)).toList())).append("]\n"); 
+            sb.append("]"); 
+            return sb.toString(); 
+        }
     }
 }
