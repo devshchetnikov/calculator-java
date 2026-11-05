@@ -2,6 +2,9 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.function.DoubleUnaryOperator;
+import java.util.function.Function;
 
 public class SymbolicCalculator {
 
@@ -189,14 +192,29 @@ public class SymbolicCalculator {
     }
 
     private static class Executor {
-        private static final Map<String, Double> UNARY = Map.of(
-            "sin", v -> Math.sin(v), "cos", v -> Math.cos(v), "tan", v -> Math.tan(v),
-            "asin", v -> Math.asin(v), "acos", v -> Math.acos(v), "atan", v -> Math.atan(v),
-            "sinh", v -> Math.sinh(v), "cosh", v -> Math.cosh(v), "tanh", v -> Math.tanh(v),
-            "sqrt", v -> Math.sqrt(v), "ln", v -> Math.log(v), "log10", v -> Math.log10(v), "abs", v -> Math.abs(v),
-            "re", c -> ((Complex) c).re, "im", c -> ((Complex) c).im, "conj", c -> ((Complex) c).conj()
-        );
-        private static final Map<String, Double> BINARY = Map.of(
+        private static final Map<String, Function<Object, Object>> UNARY = new HashMap<>();
+        
+        static {
+            UNARY.put("sin", v -> applyMath(v, Math::sin));
+            UNARY.put("cos", v -> applyMath(v, Math::cos));
+            UNARY.put("tan", v -> applyMath(v, Math::tan));
+            UNARY.put("asin", v -> applyMath(v, Math::asin));
+            UNARY.put("acos", v -> applyMath(v, Math::acos));
+            UNARY.put("atan", v -> applyMath(v, Math::atan));
+            UNARY.put("sinh", v -> applyMath(v, Math::sinh));
+            UNARY.put("cosh", v -> applyMath(v, Math::cosh));
+            UNARY.put("tanh", v -> applyMath(v, Math::tanh));
+            UNARY.put("sqrt", v -> applyMath(v, Math::sqrt));
+            UNARY.put("ln", v -> applyMath(v, Math::log));
+            UNARY.put("log10", v -> applyMath(v, Math::log10));
+            UNARY.put("abs", v -> applyMath(v, Math::abs));
+            UNARY.put("re", v -> v instanceof Complex c ? c.re : applyMath(v, x -> x));
+            UNARY.put("im", v -> v instanceof Complex c ? c.im : 0.0);
+            UNARY.put("conj", v -> v instanceof Complex c ? c.conj() : new Complex(applyMath(v, x -> x), 0));
+            UNARY.put("fact", SymbolicCalculator::safeFactorial);
+        }
+
+        private static final Map<String, java.util.function.BiFunction<Double, Double, Double>> BINARY = Map.of(
             "+", (a, b) -> a + b, "-", (a, b) -> a - b, "*", (a, b) -> a * b,
             "/", (a, b) -> { if (b == 0) throw new IllegalArgumentException("Division by zero"); return a / b; },
             "//", (a, b) -> { if (b == 0) throw new IllegalArgumentException("Division by zero"); return (double) ((long) a / (long) b); },
@@ -207,7 +225,7 @@ public class SymbolicCalculator {
         static String getBanner() {
             return """
                    === Symbolic Engine v2.1 (Compact) ===
-                   Enter expressions. Commands: help, history, clear, mode, vars, exit, del <id>, reset ans, cls
+                   Enter expressions. Commands: help, history, clear, mode, vars, exit, del <id>, reset ans, cls, fact <n>
                    Vectors: [1, 2, 3]. Matrices: [[1, 2], [3, 4]].
                    Complex: 3+4i, re(5i), abs(-3+4i)
                    """;
@@ -238,7 +256,6 @@ public class SymbolicCalculator {
                     var sb = new StringBuilder();
                     while (i < source.length() && Character.isLetterOrDigit(source.charAt(i))) sb.append(source.charAt(i++));
                     String word = sb.toString().toLowerCase();
-                    // Обработка мнимой части вида "3i" или "-2i"
                     if (word.endsWith("i")) {
                         String numPart = word.substring(0, word.length() - 1);
                         if (numPart.isEmpty()) tokens.add("i");
@@ -269,20 +286,17 @@ public class SymbolicCalculator {
                 if (t.equals("i")) { stack.push(new Complex(0, 1)); continue; }
 
                 if (UNARY.containsKey(t)) { 
-                    Object a = stack.pop(); 
-                    if (a instanceof Complex c) {
-                        if (t.equals("abs")) {
-                            stack.push(c.abs());
-                        } else {
-                            stack.push(UNARY.get(t).apply(c));
-                        }
-                    } else {
-                        stack.push(UNARY.get(t).apply((Double) a));
+                    Object a = stack.pop();
+                    try {
+                        stack.push(UNARY.get(t).apply(a));
+                    } catch (IllegalArgumentException ex) {
+                        throw ex;
+                    } catch (Exception ex) {
+                        throw new IllegalArgumentException("Cannot apply '" + t + "' to " + a.getClass().getSimpleName());
                     }
                     continue; 
                 }
 
-                if (t.equals("fact")) { Object a = stack.pop(); double v = (Double) a; if (v < 0 || v != Math.floor(v)) throw new IllegalArgumentException("Factorial domain error"); stack.push(factorial((int) v)); continue; }
                 if (t.equals("gcd") || t.equals("lcm")) { Object b = stack.pop(), a = stack.pop(); long ai = (long)(Double)a, bi = (long)(Double)b; stack.push(t.equals("gcd") ? (double) gcd(ai, bi) : (double) lcm(ai, bi)); continue; }
                 if (t.equals("det")) { Object a = stack.pop(); stack.push(((Matrix) a).determinant()); continue; }
                 if (t.equals("transpose")) { Object a = stack.pop(); stack.push(((Matrix) a).transpose()); continue; }
@@ -291,7 +305,6 @@ public class SymbolicCalculator {
 
                 Object bObj = stack.pop(), aObj = stack.pop();
 
-                // Complex arithmetic
                 if (aObj instanceof Complex ca) {
                     Complex cb = (bObj instanceof Complex c) ? c : new Complex((Double) bObj, 0);
                     Complex res = switch (t) {
@@ -319,18 +332,15 @@ public class SymbolicCalculator {
                     continue;
                 }
 
-                // Vector and Matrix logic
                 if (aObj instanceof Matrix ma && bObj instanceof Matrix mb) {
-                    // Vector operations (1D matrices)
                     if (ma.rows() == 1 && mb.rows() == 1) {
                         return switch (t) {
                             case "+" -> ma.add(mb);
                             case "-" -> ma.subtract(mb);
-                            case "." -> dot(ma, mb); // Scalar product
+                            case "." -> dot(ma, mb);
                             default -> throw new IllegalArgumentException("Vector op: " + t);
                         };
                     }
-                    // Matrix operations
                     return switch (t) {
                         case "+" -> ma.add(mb); 
                         case "-" -> ma.subtract(mb); 
@@ -356,8 +366,41 @@ public class SymbolicCalculator {
             return stack.pop();
         }
 
-        private static double factorial(int n) { long acc = 1; for (int i = 2; i <= n; i++) acc *= i; return (double) acc; }
-        private static long gcd(long a, long b) { while (b != 0) { long t = b; b = a % b; a = t; } return a; }
+        private static Object applyMath(Object val, DoubleUnaryOperator op) {
+            if (val instanceof Double d) return op.applyAsDouble(d);
+            if (val instanceof Complex c) return op.applyAsDouble(c.re);
+            if (val instanceof Matrix m) throw new IllegalArgumentException("Matrix operand not supported");
+            throw new IllegalArgumentException("Unknown operand type: " + val.getClass());
+        }
+
+        private static Object safeFactorial(Object val) {
+            double v;
+            if (val instanceof Double d) {
+                v = d;
+            } else if (val instanceof Complex c) {
+                v = c.re;
+            } else {
+                throw new IllegalArgumentException("Factorial domain error");
+            }
+            
+            if (v < 0 || v != Math.floor(v)) {
+                throw new IllegalArgumentException("Factorial domain error");
+            }
+            
+            if (v > 170) {
+                return Double.POSITIVE_INFINITY;
+            }
+            
+            return factorial((int) v);
+        }
+
+        private static double factorial(int n) { 
+            long acc = 1; 
+            for (int i = 2; i <= n; i++) acc *= i; 
+            return (double) acc; 
+        }
+
+        private static double gcd(long a, long b) { while (b != 0) { long t = b; b = a % b; a = t; } return a; }
         private static long lcm(long a, long b) { return a == 0 || b == 0 ? 0 : Math.abs(a / gcd(a, b) * b); }
         private static double dot(Matrix a, Matrix b) { 
             if (a.cols() != b.cols()) throw new IllegalArgumentException("Vector dimensions must match");
@@ -472,8 +515,8 @@ public class SymbolicCalculator {
         @Override public String toString() { 
             if (rows() == 1) return "[" + String.join(", ", data.get(0()).stream().map(v -> formatDouble(v)).toList()) + "]";
             var sb = new StringBuilder(); 
-            sb.append("[\n"); 
-            for (List<Double> row : data) sb.append("  [").append(String.join(", ", row.stream().map(v -> formatDouble(v)).toList())).append("]\n"); 
+            sb.append("[\\n"); 
+            for (List<Double> row : data) sb.append("  [").append(String.join(", ", row.stream().map(v -> formatDouble(v)).toList())).append("]\\n"); 
             sb.append("]"); 
             return sb.toString(); 
         }
