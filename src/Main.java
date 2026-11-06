@@ -332,7 +332,9 @@ public class SymbolicCalculator {
                     continue;
                 }
 
+                // Matrix-Matrix and Vector-Vector operations
                 if (aObj instanceof Matrix ma && bObj instanceof Matrix mb) {
+                    // Vector dot product (1xN . 1xN)
                     if (ma.rows() == 1 && mb.rows() == 1) {
                         return switch (t) {
                             case "+" -> ma.add(mb);
@@ -341,6 +343,7 @@ public class SymbolicCalculator {
                             default -> throw new IllegalArgumentException("Vector op: " + t);
                         };
                     }
+                    // General matrix algebra
                     return switch (t) {
                         case "+" -> ma.add(mb); 
                         case "-" -> ma.subtract(mb); 
@@ -349,8 +352,12 @@ public class SymbolicCalculator {
                         default -> throw new IllegalArgumentException("Matrix op: " + t);
                     };
                 }
+                
+                // Scalar-Matrix and Matrix-Scalar operations
                 if (aObj instanceof Double k && bObj instanceof Matrix m) { stack.push(m.scale(k)); continue; }
                 if (aObj instanceof Matrix m && bObj instanceof Double k) { stack.push(m.scale(k)); continue; }
+
+                // Double-Double operations
                 if (aObj instanceof Double a && bObj instanceof Double b) {
                     Double res = switch (t) {
                         case "+", "-", "*", "/", "//", "%", "^" -> BINARY.get(t).apply(a, b);
@@ -402,6 +409,8 @@ public class SymbolicCalculator {
 
         private static double gcd(long a, long b) { while (b != 0) { long t = b; b = a % b; a = t; } return a; }
         private static long lcm(long a, long b) { return a == 0 || b == 0 ? 0 : Math.abs(a / gcd(a, b) * b); }
+        
+        // New helper methods for matrix algebra
         private static double dot(Matrix a, Matrix b) { 
             if (a.cols() != b.cols()) throw new IllegalArgumentException("Vector dimensions must match");
             double sum = 0; 
@@ -421,6 +430,7 @@ public class SymbolicCalculator {
         int rows() { return data.size(); } 
         int cols() { return data.get(0).size(); }
         double get(int r, int c) { return data.get(r).get(c); }
+        
         Matrix add(Matrix o) { 
             List<List<Double>> res = new java.util.ArrayList<>(); 
             for (int i = 0; i < rows(); i++) { 
@@ -449,6 +459,7 @@ public class SymbolicCalculator {
             return new Matrix(res); 
         }
         Matrix multiply(Matrix o) { 
+            if (cols() != o.rows()) throw new IllegalArgumentException("Incompatible dimensions for multiplication");
             List<List<Double>> res = new java.util.ArrayList<>(); 
             for (int i = 0; i < rows(); i++) { 
                 List<Double> row = new java.util.ArrayList<>(); 
@@ -471,6 +482,7 @@ public class SymbolicCalculator {
             return new Matrix(res); 
         }
         Matrix cross(Matrix o) { 
+            if (cols() != 3 || o.cols() != 3) throw new IllegalArgumentException("Cross product is defined only for 3D vectors");
             return new Matrix(List.of(List.of(
                 data.get(0).get(1) * o.data.get(0).get(2) - data.get(0).get(2) * o.data.get(0).get(1), 
                 data.get(0).get(2) * o.data.get(0).get(0) - data.get(0).get(0) * o.data.get(0).get(2), 
