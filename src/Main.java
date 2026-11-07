@@ -1,536 +1,112 @@
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.function.DoubleUnaryOperator;
-import java.util.function.Function;
+// --- NEW CLASS: Fraction (добавить рядом с Complex) ---
+private static class Fraction {
+    private final long num;
+    private final long denom;
 
-public class SymbolicCalculator {
-
-    private final Deque<String> commandLog = new ArrayDeque<>();
-    private final Map<String, Object> context = Map.of("pi", Math.PI, "e", Math.E, "tau", 2 * Math.PI);
-    private boolean angularUnitIsDegrees = true;
-    private double lastResult = 0.0;
-
-    private static final String CMD_EXIT = "exit", CMD_HELP = "help", CMD_HISTORY = "history", CMD_CLEAR = "clear";
-    private static final String CMD_MODE = "mode", CMD_VARS = "vars", CMD_DEL = "del", CMD_RESET = "reset ans";
-
-    public static void main(String[] args) { new SymbolicCalculator().repl(); }
-
-    private void repl() {
-        System.out.println(Executor.getBanner());
-        try (var reader = new java.util.Scanner(System.in)) {
-            while (true) {
-                System.out.print(String.format("sym [%s]> ", angularUnitIsDegrees ? "DEG" : "RAD"));
-                String line = reader.nextLine().trim();
-                if (line.isEmpty()) continue;
-
-                switch (line.toLowerCase()) {
-                    case CMD_EXIT -> { return; }
-                    case CMD_HELP -> System.out.println(Executor.getBanner());
-                    case CMD_HISTORY -> printLog();
-                    case CMD_CLEAR -> purgeState();
-                    case "cls", "clear screen" -> clearScreen();
-                    case CMD_MODE -> toggleMode();
-                    case CMD_VARS -> printContext();
-                    default -> {
-                        if (line.startsWith(CMD_DEL + " ")) {
-                            purgeBinding(line.substring(CMD_DEL.length() + 1).trim().toLowerCase());
-                        } else if (line.equalsIgnoreCase(CMD_RESET)) {
-                            lastResult = 0.0;
-                            System.out.println("ans -> 0");
-                        } else if (line.contains("=")) {
-                            bind(line);
-                        } else {
-                            try {
-                                var value = Executor.resolve(Executor.parse(line), this::fetch);
-                                if (value instanceof Double d) {
-                                    logResult(line, d);
-                                } else if (value instanceof Matrix m) {
-                                    System.out.println("=> " + m);
-                                    commandLog.add(line + " = " + m);
-                                } else if (value instanceof Complex c) {
-                                    logResult(line, c);
-                                }
-                            } catch (Exception ex) {
-                                System.err.println("! " + ex.getMessage());
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    Fraction(long num, long denom) {
+        if (denom == 0) throw new IllegalArgumentException("Division by zero");
+        if (denom < 0) { num = -num; denom = -denom; }
+        long g = gcd(Math.abs(num), denom);
+        this.num = num / g;
+        this.denom = denom / g;
     }
 
-    private void bind(String input) {
-        int idx = input.indexOf('=');
-        String key = input.substring(0, idx).trim().toLowerCase();
-        String expr = input.substring(idx + 1).trim();
+    Fraction add(Fraction o) { return new Fraction(num * o.denom + o.num * denom, denom * o.denom); }
+    Fraction sub(Fraction o) { return new Fraction(num * o.denom - o.num * denom, denom * o.denom); }
+    Fraction mul(Fraction o) { return new Fraction(num * o.num, denom * o.denom); }
+    Fraction div(Fraction o) { return new Fraction(num * o.denom, denom * o.num); }
 
-        if (!key.matches("[a-z]+") || context.containsKey(key)) {
-            System.err.println("! Invalid or protected identifier"); return;
-        }
+    double toDouble() { return (double) num / (double) denom; }
+
+    private static long gcd(long a, long b) {
+        while (b != 0) { long t = b; b = a % b; a = t; }
+        return a;
+    }
+
+    @Override
+    public String toString() {
+        if (denom == 1) return Long.toString(num);
+        return num + "/" + denom;
+    }
+}
+
+// В методе fetch (добавить в switch):
+case "ans" -> lastResult instanceof Fraction f ? f : lastResult;
+
+// В методе resolve (добавить обработку токена дроби перед UNARY):
+if (t.matches("-?\\d+/\\d+")) {
+    String[] parts = t.split("/");
+    stack.push(new Fraction(Long.parseLong(parts[0]), Long.parseLong(parts[1])));
+    continue;
+}
+
+// В методе resolve (добавить ветку для Fraction + Fraction перед Double + Double):
+if (aObj instanceof Fraction fa && bObj instanceof Fraction fb) {
+    Fraction res = switch (t) {
+        case "+" -> fa.add(fb);
+        case "-" -> fa.sub(fb);
+        case "*" -> fa.mul(fb);
+        case "/" -> fa.div(fb);
+        default -> throw new IllegalArgumentException("Unknown operator for fraction: " + t);
+    };
+    stack.push(res);
+    continue;
+}
+
+// В методе resolve (расширить ветку Double + Object для поддержки Fraction):
+if (aObj instanceof Double a) {
+    if (bObj instanceof Fraction fb) {
+        Double res = switch (t) {
+            case "+" -> a + fb.toDouble();
+            case "-" -> a - fb.toDouble();
+            case "*" -> a * fb.toDouble();
+            case "/" -> a / fb.toDouble();
+            case "^" -> Math.pow(a, fb.toDouble());
+            default -> throw new IllegalArgumentException("Mixed op (Double/Fraction): " + t);
+        };
+        stack.push(res);
+        continue;
+    }
+    if (bObj instanceof Double b) {
+        // ... существующий код для Double + Double ...
+    }
+}
+if (aObj instanceof Fraction fa && bObj instanceof Double b) {
+    Double res = switch (t) {
+        case "+" -> fa.toDouble() + b;
+        case "-" -> fa.toDouble() - b;
+        case "*" -> fa.toDouble() * b;
+        case "/" -> fa.toDouble() / b;
+        case "^" -> Math.pow(fa.toDouble(), b);
+        default -> throw new IllegalArgumentException("Mixed op (Fraction/Double): " + t);
+    };
+    stack.push(res);
+    continue;
+}
+
+// В методе logResult (добавить перегрузку для Fraction):
+private void logResult(String expr, Fraction f) {
+    String out = f.toString();
+    System.out.println("=> " + out);
+    commandLog.add(expr + " = " + out);
+    lastResult = f.toDouble();
+}
+
+// В методе repl() в блоке default (добавить новую команду):
+} else if (line.startsWith(CMD_DEL + " ")) {
+    // ... существующий код ...
+} else if (line.startsWith("frac ")) {
+    String[] parts = line.substring(5).trim().split("\\s+");
+    if (parts.length == 2) {
         try {
-            Object val = Executor.resolve(Executor.parse(expr), this::fetch);
-            if (val instanceof Double d) {
-                context.put(key, d);
-                logResult(key + " = " + expr, d);
-            } else if (val instanceof Matrix m) {
-                context.put(key, m);
-                System.out.println(key + " -> " + m);
-                commandLog.add(input + " (Result: " + m + ")");
-            } else if (val instanceof Complex c) {
-                context.put(key, c);
-                logResult(key + " = " + expr, c);
-            }
+            Fraction f = new Fraction(Long.parseLong(parts[0]), Long.parseLong(parts[1]));
+            logResult("frac " + parts[0] + " " + parts[1], f);
         } catch (Exception ex) {
             System.err.println("! " + ex.getMessage());
         }
+    } else {
+        System.err.println("! Usage: frac <numerator> <denominator>");
     }
-
-    private Object fetch(String token) {
-        return switch (token) {
-            case "ans" -> lastResult;
-            default -> context.getOrDefault(token, null);
-        };
-    }
-
-    private void toggleMode() {
-        angularUnitIsDegrees = !angularUnitIsDegrees;
-        System.out.println("Trig mode: " + (angularUnitIsDegrees ? "DEG" : "RAD"));
-    }
-
-    private void purgeState() {
-        commandLog.clear();
-        lastResult = 0.0;
-        System.out.println("State flushed.");
-    }
-
-    private void purgeBinding(String name) {
-        if (context.containsKey(name)) {
-            context.remove(name);
-            System.out.println("'" + name + "' evicted.");
-            commandLog.add(CMD_DEL + " " + name);
-        } else {
-            System.err.println("! No such binding: " + name);
-        }
-    }
-
-    private void printLog() {
-        if (commandLog.isEmpty()) { System.out.println("Log is void."); return; }
-        System.out.println("Session log:");
-        int idx = 1;
-        for (String entry : commandLog) {
-            System.out.println(idx++ + ". " + entry);
-        }
-    }
-
-    private void printContext() {
-        if (context.isEmpty()) { System.out.println("Context is barren."); return; }
-        System.out.println("Bindings:");
-        context.forEach((k, v) -> {
-            if (v instanceof Double d) System.out.println(k + " = " + formatDouble(d));
-            else if (v instanceof Matrix m) System.out.println(k + " = " + m);
-            else if (v instanceof Complex c) System.out.println(k + " = " + c);
-        });
-    }
-
-    private void logResult(String expr, double d) {
-        if (Double.isInfinite(d)) throw new IllegalStateException("Magnitude overflow");
-        String out = formatDouble(d);
-        System.out.println("=> " + out);
-        commandLog.add(expr + " = " + out);
-        lastResult = d;
-    }
-
-    private void logResult(String expr, Complex c) {
-        System.out.println("=> " + c);
-        commandLog.add(expr + " = " + c);
-        lastResult = c.re;
-    }
-
-    private static String formatDouble(double v) {
-        if (Double.isNaN(v)) return "NaN";
-        if (Double.isInfinite(v)) return "Infinity";
-        return String.format("%.15f", v).replaceAll("\\.?0+$", "");
-    }
-
-    private static void clearScreen() {
-        System.out.print("\033[H\033[2J\n");
-        System.out.flush();
-    }
-
-    // --- NEW CLASS: Complex ---
-    private static class Complex {
-        final double re;
-        final double im;
-
-        Complex(double re, double im) {
-            this.re = re;
-            this.im = im;
-        }
-
-        Complex add(Complex o) { return new Complex(re + o.re, im + o.im); }
-        Complex sub(Complex o) { return new Complex(re - o.re, im - o.im); }
-        Complex mul(Complex o) { return new Complex(re * o.re - im * o.im, re * o.im + im * o.re); }
-        Complex div(Complex o) {
-            double denom = o.re * o.re + o.im * o.im;
-            if (denom == 0) throw new IllegalArgumentException("Division by zero");
-            return new Complex((re * o.re + im * o.im) / denom, (im * o.re - re * o.im) / denom);
-        }
-        Complex conj() { return new Complex(re, -im); }
-        double abs() { return Math.hypot(re, im); }
-
-        @Override
-        public String toString() {
-            if (im == 0) return formatDouble(re);
-            if (re == 0) return formatDouble(im) + "i";
-            if (im < 0) return formatDouble(re) + " - " + formatDouble(-im) + "i";
-            return formatDouble(re) + " + " + formatDouble(im) + "i";
-        }
-    }
-
-    private static class Executor {
-        private static final Map<String, Function<Object, Object>> UNARY = new HashMap<>();
-        
-        static {
-            UNARY.put("sin", v -> applyMath(v, Math::sin));
-            UNARY.put("cos", v -> applyMath(v, Math::cos));
-            UNARY.put("tan", v -> applyMath(v, Math::tan));
-            UNARY.put("asin", v -> applyMath(v, Math::asin));
-            UNARY.put("acos", v -> applyMath(v, Math::acos));
-            UNARY.put("atan", v -> applyMath(v, Math::atan));
-            UNARY.put("sinh", v -> applyMath(v, Math::sinh));
-            UNARY.put("cosh", v -> applyMath(v, Math::cosh));
-            UNARY.put("tanh", v -> applyMath(v, Math::tanh));
-            UNARY.put("sqrt", v -> applyMath(v, Math::sqrt));
-            UNARY.put("ln", v -> applyMath(v, Math::log));
-            UNARY.put("log10", v -> applyMath(v, Math::log10));
-            UNARY.put("abs", v -> applyMath(v, Math::abs));
-            UNARY.put("re", v -> v instanceof Complex c ? c.re : applyMath(v, x -> x));
-            UNARY.put("im", v -> v instanceof Complex c ? c.im : 0.0);
-            UNARY.put("conj", v -> v instanceof Complex c ? c.conj() : new Complex(applyMath(v, x -> x), 0));
-            UNARY.put("fact", SymbolicCalculator::safeFactorial);
-        }
-
-        private static final Map<String, java.util.function.BiFunction<Double, Double, Double>> BINARY = Map.of(
-            "+", (a, b) -> a + b, "-", (a, b) -> a - b, "*", (a, b) -> a * b,
-            "/", (a, b) -> { if (b == 0) throw new IllegalArgumentException("Division by zero"); return a / b; },
-            "//", (a, b) -> { if (b == 0) throw new IllegalArgumentException("Division by zero"); return (double) ((long) a / (long) b); },
-            "%", (a, b) -> { if (b == 0) throw new IllegalArgumentException("Division by zero"); return ((a % b) + Math.abs(b)) % Math.abs(b); },
-            "^", Math::pow
-        );
-
-        static String getBanner() {
-            return """
-                   === Symbolic Engine v2.1 (Compact) ===
-                   Enter expressions. Commands: help, history, clear, mode, vars, exit, del <id>, reset ans, cls, fact <n>
-                   Vectors: [1, 2, 3]. Matrices: [[1, 2], [3, 4]].
-                   Complex: 3+4i, re(5i), abs(-3+4i)
-                   """;
-        }
-
-        static List<String> parse(String source) {
-            var tokens = new java.util.ArrayList<String>();
-            for (int i = 0; i < source.length(); i++) {
-                char ch = source.charAt(i);
-                if (Character.isWhitespace(ch)) continue;
-                if ("+-*/^%!(),[]".indexOf(ch) != -1) {
-                    if (ch == '/' && i + 1 < source.length() && source.charAt(i + 1) == '/') { tokens.add("//"); i++; }
-                    else tokens.add(String.valueOf(ch));
-                    continue;
-                }
-                if (Character.isDigit(ch) || ch == '.') {
-                    var sb = new StringBuilder();
-                    if (ch == '-' && (i == 0 || "+-*/^%!(),[".indexOf(source.charAt(i - 1)) != -1)) sb.append(ch);
-                    while (i < source.length() && (Character.isDigit(source.charAt(i)) || source.charAt(i) == '.')) sb.append(source.charAt(i++));
-                    tokens.add(sb.toString()); i--;
-                    continue;
-                }
-                if (ch == 'i') {
-                    tokens.add("i");
-                    continue;
-                }
-                if (Character.isLetter(ch)) {
-                    var sb = new StringBuilder();
-                    while (i < source.length() && Character.isLetterOrDigit(source.charAt(i))) sb.append(source.charAt(i++));
-                    String word = sb.toString().toLowerCase();
-                    if (word.endsWith("i")) {
-                        String numPart = word.substring(0, word.length() - 1);
-                        if (numPart.isEmpty()) tokens.add("i");
-                        else if (numPart.equals("-")) tokens.add("-i");
-                        else if (numPart.equals("+")) tokens.add("i");
-                        else tokens.add(numPart); 
-                        tokens.add("i");
-                    } else {
-                        tokens.add(word);
-                    }
-                    i--;
-                    continue;
-                }
-                throw new IllegalArgumentException("Unknown glyph: " + ch);
-            }
-            return tokens;
-        }
-
-        static Object resolve(List<String> rpn, java.util.function.Function<String, Object> lookup) {
-            Deque<Object> stack = new ArrayDeque<>();
-            for (String t : rpn) {
-                if (t.equals("u-")) { 
-                    Object a = stack.pop(); 
-                    stack.push(a instanceof Double d ? -d : a instanceof Complex c ? new Complex(-c.re, -c.im) : ((Matrix) a).scale(-1)); 
-                    continue; 
-                }
-                if (t.equals("ans")) { stack.push(lookup.apply(t)); continue; }
-                if (t.equals("i")) { stack.push(new Complex(0, 1)); continue; }
-
-                if (UNARY.containsKey(t)) { 
-                    Object a = stack.pop();
-                    try {
-                        stack.push(UNARY.get(t).apply(a));
-                    } catch (IllegalArgumentException ex) {
-                        throw ex;
-                    } catch (Exception ex) {
-                        throw new IllegalArgumentException("Cannot apply '" + t + "' to " + a.getClass().getSimpleName());
-                    }
-                    continue; 
-                }
-
-                if (t.equals("gcd") || t.equals("lcm")) { Object b = stack.pop(), a = stack.pop(); long ai = (long)(Double)a, bi = (long)(Double)b; stack.push(t.equals("gcd") ? (double) gcd(ai, bi) : (double) lcm(ai, bi)); continue; }
-                if (t.equals("det")) { Object a = stack.pop(); stack.push(((Matrix) a).determinant()); continue; }
-                if (t.equals("transpose")) { Object a = stack.pop(); stack.push(((Matrix) a).transpose()); continue; }
-                if (t.equals("cross") || t.equals("x")) { Object b = stack.pop(), a = stack.pop(); stack.push(((Matrix) a).cross((Matrix) b)); continue; }
-                if (t.equals("norm")) { Object a = stack.pop(); stack.push(((Matrix) a).norm()); continue; }
-
-                Object bObj = stack.pop(), aObj = stack.pop();
-
-                if (aObj instanceof Complex ca) {
-                    Complex cb = (bObj instanceof Complex c) ? c : new Complex((Double) bObj, 0);
-                    Complex res = switch (t) {
-                        case "+" -> ca.add(cb);
-                        case "-" -> ca.sub(cb);
-                        case "*" -> ca.mul(cb);
-                        case "/" -> ca.div(cb);
-                        case "^" -> throw new IllegalArgumentException("Complex exponentiation not supported in RPN yet");
-                        default -> throw new IllegalArgumentException("Unknown operator for complex: " + t);
-                    };
-                    stack.push(res);
-                    continue;
-                }
-                if (bObj instanceof Complex) {
-                    Complex ca = new Complex((Double) aObj, 0);
-                    Complex cb = (Complex) bObj;
-                    Complex res = switch (t) {
-                        case "+" -> ca.add(cb);
-                        case "-" -> ca.sub(cb);
-                        case "*" -> ca.mul(cb);
-                        case "/" -> ca.div(cb);
-                        default -> throw new IllegalArgumentException("Unknown operator for complex: " + t);
-                    };
-                    stack.push(res);
-                    continue;
-                }
-
-                // Matrix-Matrix and Vector-Vector operations
-                if (aObj instanceof Matrix ma && bObj instanceof Matrix mb) {
-                    // Vector dot product (1xN . 1xN)
-                    if (ma.rows() == 1 && mb.rows() == 1) {
-                        return switch (t) {
-                            case "+" -> ma.add(mb);
-                            case "-" -> ma.subtract(mb);
-                            case "." -> dot(ma, mb);
-                            default -> throw new IllegalArgumentException("Vector op: " + t);
-                        };
-                    }
-                    // General matrix algebra
-                    return switch (t) {
-                        case "+" -> ma.add(mb); 
-                        case "-" -> ma.subtract(mb); 
-                        case "*" -> ma.multiply(mb); 
-                        case "." -> dot(ma, mb);
-                        default -> throw new IllegalArgumentException("Matrix op: " + t);
-                    };
-                }
-                
-                // Scalar-Matrix and Matrix-Scalar operations
-                if (aObj instanceof Double k && bObj instanceof Matrix m) { stack.push(m.scale(k)); continue; }
-                if (aObj instanceof Matrix m && bObj instanceof Double k) { stack.push(m.scale(k)); continue; }
-
-                // Double-Double operations
-                if (aObj instanceof Double a && bObj instanceof Double b) {
-                    Double res = switch (t) {
-                        case "+", "-", "*", "/", "//", "%", "^" -> BINARY.get(t).apply(a, b);
-                        case "." -> a * b;
-                        default -> throw new IllegalArgumentException("Unknown operator: " + t);
-                    };
-                    if (Double.isInfinite(res)) throw new IllegalArgumentException("Overflow in " + t);
-                    stack.push(res);
-                    continue;
-                }
-                throw new IllegalArgumentException("Type mismatch for operator: " + t);
-            }
-            return stack.pop();
-        }
-
-        private static Object applyMath(Object val, DoubleUnaryOperator op) {
-            if (val instanceof Double d) return op.applyAsDouble(d);
-            if (val instanceof Complex c) return op.applyAsDouble(c.re);
-            if (val instanceof Matrix m) throw new IllegalArgumentException("Matrix operand not supported");
-            throw new IllegalArgumentException("Unknown operand type: " + val.getClass());
-        }
-
-        private static Object safeFactorial(Object val) {
-            double v;
-            if (val instanceof Double d) {
-                v = d;
-            } else if (val instanceof Complex c) {
-                v = c.re;
-            } else {
-                throw new IllegalArgumentException("Factorial domain error");
-            }
-            
-            if (v < 0 || v != Math.floor(v)) {
-                throw new IllegalArgumentException("Factorial domain error");
-            }
-            
-            if (v > 170) {
-                return Double.POSITIVE_INFINITY;
-            }
-            
-            return factorial((int) v);
-        }
-
-        private static double factorial(int n) { 
-            long acc = 1; 
-            for (int i = 2; i <= n; i++) acc *= i; 
-            return (double) acc; 
-        }
-
-        private static double gcd(long a, long b) { while (b != 0) { long t = b; b = a % b; a = t; } return a; }
-        private static long lcm(long a, long b) { return a == 0 || b == 0 ? 0 : Math.abs(a / gcd(a, b) * b); }
-        
-        // New helper methods for matrix algebra
-        private static double dot(Matrix a, Matrix b) { 
-            if (a.cols() != b.cols()) throw new IllegalArgumentException("Vector dimensions must match");
-            double sum = 0; 
-            for (int i = 0; i < a.cols(); i++) sum += a.get(0, i) * b.get(0, i); 
-            return sum; 
-        }
-    }
-
-    private static class Matrix {
-        private final List<List<Double>> data;
-        Matrix(List<List<Double>> data) { 
-            if (data.isEmpty() || data.get(0).isEmpty()) throw new IllegalArgumentException("Empty matrix"); 
-            int cols = data.get(0).size(); 
-            for (List<Double> r : data) if (r.size() != cols) throw new IllegalArgumentException("Jagged matrix"); 
-            this.data = data; 
-        }
-        int rows() { return data.size(); } 
-        int cols() { return data.get(0).size(); }
-        double get(int r, int c) { return data.get(r).get(c); }
-        
-        Matrix add(Matrix o) { 
-            List<List<Double>> res = new java.util.ArrayList<>(); 
-            for (int i = 0; i < rows(); i++) { 
-                List<Double> row = new java.util.ArrayList<>(); 
-                for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) + o.data.get(i).get(j)); 
-                res.add(row); 
-            } 
-            return new Matrix(res); 
-        }
-        Matrix subtract(Matrix o) { 
-            List<List<Double>> res = new java.util.ArrayList<>(); 
-            for (int i = 0; i < rows(); i++) { 
-                List<Double> row = new java.util.ArrayList<>(); 
-                for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) - o.data.get(i).get(j)); 
-                res.add(row); 
-            } 
-            return new Matrix(res); 
-        }
-        Matrix scale(double k) { 
-            List<List<Double>> res = new java.util.ArrayList<>(); 
-            for (int i = 0; i < rows(); i++) { 
-                List<Double> row = new java.util.ArrayList<>(); 
-                for (int j = 0; j < cols(); j++) row.add(data.get(i).get(j) * k); 
-                res.add(row); 
-            } 
-            return new Matrix(res); 
-        }
-        Matrix multiply(Matrix o) { 
-            if (cols() != o.rows()) throw new IllegalArgumentException("Incompatible dimensions for multiplication");
-            List<List<Double>> res = new java.util.ArrayList<>(); 
-            for (int i = 0; i < rows(); i++) { 
-                List<Double> row = new java.util.ArrayList<>(); 
-                for (int j = 0; j < o.cols(); j++) { 
-                    double sum = 0; 
-                    for (int k = 0; k < cols(); k++) sum += data.get(i).get(k) * o.data.get(k).get(j); 
-                    row.add(sum); 
-                } 
-                res.add(row); 
-            } 
-            return new Matrix(res); 
-        }
-        Matrix transpose() { 
-            List<List<Double>> res = new java.util.ArrayList<>(); 
-            for (int j = 0; j < cols(); j++) { 
-                List<Double> col = new java.util.ArrayList<>(); 
-                for (int i = 0; i < rows(); i++) col.add(data.get(i).get(j)); 
-                res.add(col); 
-            } 
-            return new Matrix(res); 
-        }
-        Matrix cross(Matrix o) { 
-            if (cols() != 3 || o.cols() != 3) throw new IllegalArgumentException("Cross product is defined only for 3D vectors");
-            return new Matrix(List.of(List.of(
-                data.get(0).get(1) * o.data.get(0).get(2) - data.get(0).get(2) * o.data.get(0).get(1), 
-                data.get(0).get(2) * o.data.get(0).get(0) - data.get(0).get(0) * o.data.get(0).get(2), 
-                data.get(0).get(0) * o.data.get(0).get(1) - data.get(0).get(1) * o.data.get(0).get(0)
-            )));
-        }
-        double norm() { 
-            double sum = 0; 
-            for (int i = 0; i < cols(); i++) sum += Math.pow(get(0, i), 2); 
-            return Math.sqrt(sum); 
-        }
-        Double determinant() {
-            if (rows() != cols()) throw new IllegalArgumentException("Determinant is defined only for square matrices");
-            if (rows() == 1) return data.get(0).get(0);
-            if (rows() == 2) return data.get(0).get(0) * data.get(1).get(1) - data.get(0).get(1) * data.get(1).get(0);
-            if (rows() == 3) {
-                double a = data.get(0).get(0), b = data.get(0).get(1), c = data.get(0).get(2);
-                double d = data.get(1).get(0), e = data.get(1).get(1), f = data.get(1).get(2);
-                double g = data.get(2).get(0), h = data.get(2).get(1), i = data.get(2).get(2);
-                return a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
-            }
-            double det = 0; 
-            for (int c = 0; c < cols(); c++) { 
-                double sign = (c % 2 == 0) ? 1 : -1; 
-                det += sign * data.get(0).get(c) * minor(0, c).determinant(); 
-            } 
-            return det;
-        }
-        private Matrix minor(int r, int c) { 
-            List<List<Double>> res = new java.util.ArrayList<>(); 
-            for (int i = 0; i < rows(); i++) { 
-                if (i == r) continue; 
-                List<Double> row = new java.util.ArrayList<>(); 
-                for (int j = 0; j < cols(); j++) { 
-                    if (j == c) continue; 
-                    row.add(data.get(i).get(j)); 
-                } 
-                res.add(row); 
-            } 
-            return new Matrix(res); 
-        }
-        @Override public String toString() { 
-            if (rows() == 1) return "[" + String.join(", ", data.get(0()).stream().map(v -> formatDouble(v)).toList()) + "]";
-            var sb = new StringBuilder(); 
-            sb.append("[\\n"); 
-            for (List<Double> row : data) sb.append("  [").append(String.join(", ", row.stream().map(v -> formatDouble(v)).toList())).append("]\\n"); 
-            sb.append("]"); 
-            return sb.toString(); 
-        }
-    }
+} else if (line.equalsIgnoreCase(CMD_RESET)) {
+    // ... существующий код ...
 }
