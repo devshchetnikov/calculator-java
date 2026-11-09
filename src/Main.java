@@ -5,7 +5,6 @@ import java.util.List;
 
 public class Calculator {
 
-    // --- NEW CLASS: Fraction (внутри Calculator) ---
     private static class Fraction {
         private final long num;
         private final long denom;
@@ -52,6 +51,43 @@ public class Calculator {
                 return (num < 0 ? "-" : "") + Math.abs(whole) + " " + rest + "/" + denom;
             }
             return num + "/" + denom;
+        }
+    }
+
+    // --- NEW CLASS: Complex (внутри Calculator) ---
+    private static class Complex {
+        private final double re;
+        private final double im;
+
+        Complex(double re, double im) {
+            this.re = re;
+            this.im = im;
+        }
+
+        Complex add(Complex o) { return new Complex(re + o.re, im + o.im); }
+        Complex sub(Complex o) { return new Complex(re - o.re, im - o.im); }
+        Complex mul(Complex o) { return new Complex(re * o.re - im * o.im, re * o.im + im * o.re); }
+        Complex div(Complex o) {
+            double denom = o.re * o.re + o.im * o.im;
+            return new Complex((re * o.re + im * o.im) / denom, (im * o.re - re * o.im) / denom);
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            if (Math.abs(re) > 1e-9) sb.append(formatDouble(re));
+            if (Math.abs(im) > 1e-9) {
+                if (sb.length() > 0 && im > 0) sb.append("+");
+                if (Math.abs(im - 1.0) < 1e-9) {
+                    sb.append("i");
+                } else if (Math.abs(im + 1.0) < 1e-9) {
+                    sb.append("-i");
+                } else {
+                    sb.append(formatDouble(im)).append("i");
+                }
+            }
+            if (sb.length() == 0) return "0";
+            return sb.toString();
         }
     }
 
@@ -159,6 +195,7 @@ public class Calculator {
                 Object result = evaluate(line);
                 if (result instanceof Double d) logResult(line, d);
                 else if (result instanceof Fraction f) logResult(line, f);
+                else if (result instanceof Complex c) logResult(line, c);
                 else if (result instanceof String s) logResult(line, s);
             } catch (Exception ex) {
                 System.err.println("! " + ex.getMessage());
@@ -178,6 +215,13 @@ public class Calculator {
         System.out.println("=> " + out);
         commandLog.add(expr + " = " + out);
         lastResult = f.toDouble();
+    }
+
+    private void logResult(String expr, Complex c) {
+        String out = c.toString();
+        System.out.println("=> " + out);
+        commandLog.add(expr + " = " + out);
+        lastResult = null; // Complex не конвертируется в Double для 'ans'
     }
 
     private void logResult(String expr, String s) {
@@ -256,8 +300,14 @@ public class Calculator {
                     yield new Fraction(Long.parseLong(parts[0]), Long.parseLong(parts[1]));
                 } else if (t.matches("-?\\d+(\\.\\d+)?")) {
                     yield Double.parseDouble(t);
+                } else if (t.matches("-?\\d+(\\.\\d+)?i")) {
+                    // Чисто мнимое число, например 3i или -2.5i
+                    String imStr = t.replace("i", "");
+                    if (imStr.isEmpty() || imStr.equals("+")) imStr = "1";
+                    else if (imStr.equals("-")) imStr = "-1";
+                    yield new Complex(0, Double.parseDouble(imStr));
                 } else {
-                    yield t; // variable or complex string
+                    yield t; // variable or complex string (например, 2+3i)
                 }
             }
         };
@@ -273,6 +323,18 @@ public class Calculator {
                 case "/" -> fa.div(fb);
                 case "^" -> Math.pow(fa.toDouble(), fb.toDouble());
                 default -> throw new IllegalArgumentException("Unknown operator for fraction: " + t);
+            };
+        }
+
+        // Complex + Complex
+        if (aObj instanceof Complex ca && bObj instanceof Complex cb) {
+            return switch (t) {
+                case "+" -> ca.add(cb);
+                case "-" -> ca.sub(cb);
+                case "*" -> ca.mul(cb);
+                case "/" -> ca.div(cb);
+                case "^" -> Math.pow(ca.toString().replace("i", ""), cb.toString().replace("i", "")); // Упрощенно
+                default -> throw new IllegalArgumentException("Unknown operator for complex: " + t);
             };
         }
 
@@ -298,6 +360,9 @@ public class Calculator {
                     default -> throw new IllegalArgumentException("Unknown operator: " + t);
                 };
             }
+            if (bObj instanceof Complex cb) {
+                return parseComplexCalcDouble(a, cb, t);
+            }
         }
         if (aObj instanceof Fraction fa && bObj instanceof Double b) {
             return switch (t) {
@@ -308,6 +373,9 @@ public class Calculator {
                 case "^" -> Math.pow(fa.toDouble(), b);
                 default -> throw new IllegalArgumentException("Mixed op (Fraction/Double): " + t);
             };
+        }
+        if (aObj instanceof Complex ca && bObj instanceof Double b) {
+            return parseComplexCalcDouble(b, ca, t, true);
         }
 
         // Complex number string arithmetic (very basic support)
@@ -336,6 +404,32 @@ public class Calculator {
         }
 
         throw new IllegalArgumentException("Unsupported types: " + aObj.getClass() + " " + bObj.getClass());
+    }
+
+    // Helper for Double <op> Complex
+    private Complex parseComplexCalcDouble(double real, Complex c, String op) {
+        return parseComplexCalcDouble(real, c, op, false);
+    }
+    private Complex parseComplexCalcDouble(double real, Complex c, String op, boolean reverse) {
+        if (reverse) {
+            // Complex <op> Double
+            return switch (op) {
+                case "+" -> c.add(new Complex(real, 0));
+                case "-" -> c.sub(new Complex(real, 0));
+                case "*" -> c.mul(new Complex(real, 0));
+                case "/" -> c.div(new Complex(real, 0));
+                default -> throw new IllegalArgumentException("Unsupported op for complex: " + op);
+            };
+        } else {
+            // Double <op> Complex
+            return switch (op) {
+                case "+" -> new Complex(real, 0).add(c);
+                case "-" -> new Complex(real, 0).sub(c);
+                case "*" -> new Complex(real, 0).mul(c);
+                case "/" -> new Complex(real, 0).div(c);
+                default -> throw new IllegalArgumentException("Unsupported op for complex: " + op);
+            };
+        }
     }
 
     // Helper for (Complex String) <op> Double
