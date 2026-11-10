@@ -1,7 +1,9 @@
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class Calculator {
 
@@ -72,6 +74,13 @@ public class Calculator {
             return new Complex((re * o.re + im * o.im) / denom, (im * o.re - re * o.im) / denom);
         }
 
+        Complex pow(double exponent) {
+            double r = Math.hypot(re, im);
+            double theta = Math.atan2(im, re);
+            double newR = Math.pow(r, exponent);
+            return new Complex(newR * Math.cos(exponent * theta), newR * Math.sin(exponent * theta));
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -94,6 +103,7 @@ public class Calculator {
     // --- Calculator State ---
     private Double lastResult = null;
     private final List<String> commandLog = new ArrayList<>();
+    private final Map<String, Object> variables = new HashMap<>();
 
     // --- REPL Constants ---
     private static final String CMD_EXIT = "/exit";
@@ -101,6 +111,7 @@ public class Calculator {
     private static final String CMD_RESET = "/reset";
     private static final String CMD_LOG = "/log";
     private static final String CMD_DEL = "/del";
+    private static final String CMD_VARS = "/vars";
 
     public static void main(String[] args) {
         new Calculator().repl();
@@ -123,17 +134,27 @@ public class Calculator {
                 System.out.println("Enter expressions (e.g. 2 + 2 * 2).");
                 System.out.println("Fractions: 1/2 + 3/4");
                 System.out.println("Complex: (2+3i) * 2");
-                System.out.println("Commands: /exit, /help, /reset, /log, /del <n>, frac <n> <d>, asfrac");
+                System.out.println("Variables: let x = 5, use 'ans'");
+                System.out.println("Commands: /exit, /help, /reset, /log, /del <n>, /vars, frac <n> <d>, asfrac");
                 continue;
             }
             if (line.equals(CMD_RESET)) {
                 lastResult = null;
                 commandLog.clear();
+                variables.clear();
                 System.out.println("State reset.");
                 continue;
             }
             if (line.equals(CMD_LOG)) {
                 commandLog.forEach(System.out::println);
+                continue;
+            }
+            if (line.equals(CMD_VARS)) {
+                if (variables.isEmpty()) {
+                    System.out.println("(no variables defined)");
+                } else {
+                    variables.forEach((k, v) -> System.out.println(k + " = " + formatValue(v)));
+                }
                 continue;
             }
             if (line.startsWith(CMD_DEL + " ")) {
@@ -191,6 +212,33 @@ public class Calculator {
                 continue;
             }
 
+            // Variable assignment: let x = 5 + 2
+            if (line.startsWith("let ")) {
+                int eqIdx = line.indexOf('=');
+                if (eqIdx == -1) {
+                    System.err.println("! Invalid assignment. Use: let name = expression");
+                    continue;
+                }
+                String name = line.substring(4, eqIdx).trim();
+                String expr = line.substring(eqIdx + 1).trim();
+                if (!name.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
+                    System.err.println("! Invalid variable name");
+                    continue;
+                }
+                try {
+                    Object value = evaluate(expr);
+                    if (value instanceof String) {
+                        System.err.println("! Cannot assign complex string to variable");
+                        continue;
+                    }
+                    variables.put(name, value);
+                    logResult("let " + name + " = " + expr, value);
+                } catch (Exception ex) {
+                    System.err.println("! " + ex.getMessage());
+                }
+                continue;
+            }
+
             try {
                 Object result = evaluate(line);
                 if (result instanceof Double d) logResult(line, d);
@@ -221,13 +269,20 @@ public class Calculator {
         String out = c.toString();
         System.out.println("=> " + out);
         commandLog.add(expr + " = " + out);
-        lastResult = null; // Complex не конвертируется в Double для 'ans'
+        lastResult = null;
     }
 
     private void logResult(String expr, String s) {
         System.out.println("=> " + s);
         commandLog.add(expr + " = " + s);
         lastResult = null;
+    }
+
+    private String formatValue(Object v) {
+        if (v instanceof Double d) return formatDouble(d);
+        if (v instanceof Fraction f) return f.toString();
+        if (v instanceof Complex c) return c.toString();
+        return v.toString();
     }
 
     private String formatDouble(Double d) {
@@ -240,7 +295,7 @@ public class Calculator {
         String[] tokens = tokenize(input);
         if (tokens.length == 0) throw new IllegalArgumentException("Empty expression");
 
-        // Single token (number, fraction, complex or 'ans')
+        // Single token (number, fraction, complex, variable or 'ans')
         if (tokens.length == 1) {
             return fetch(tokens[0]);
         }
@@ -250,7 +305,7 @@ public class Calculator {
         Deque<String> ops = new ArrayDeque<>();
 
         for (String t : tokens) {
-            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z]+") || t.contains("i")) {
+            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z_][a-zA-Z0-9_]*") || t.contains("i")) {
                 output.add(t);
             } else if (t.equals("(")) {
                 ops.push(t);
@@ -276,7 +331,7 @@ public class Calculator {
         // RPN Evaluation
         Deque<Object> stack = new ArrayDeque<>();
         for (String t : output) {
-            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z]+") || t.contains("i")) {
+            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z_][a-zA-Z0-9_]*") || t.contains("i")) {
                 stack.push(fetch(t));
             } else {
                 if (stack.size() < 2) throw new IllegalArgumentException("Invalid expression");
@@ -306,8 +361,10 @@ public class Calculator {
                     if (imStr.isEmpty() || imStr.equals("+")) imStr = "1";
                     else if (imStr.equals("-")) imStr = "-1";
                     yield new Complex(0, Double.parseDouble(imStr));
+                } else if (variables.containsKey(t)) {
+                    yield variables.get(t);
                 } else {
-                    yield t; // variable or complex string (например, 2+3i)
+                    yield t; // variable name (unbound) or complex string
                 }
             }
         };
@@ -333,7 +390,18 @@ public class Calculator {
                 case "-" -> ca.sub(cb);
                 case "*" -> ca.mul(cb);
                 case "/" -> ca.div(cb);
-                case "^" -> Math.pow(ca.toString().replace("i", ""), cb.toString().replace("i", "")); // Упрощенно
+                case "^" -> {
+                    if (bObj instanceof Complex expCb) {
+                        throw new IllegalArgumentException("Complex exponentiation not supported");
+                    }
+                    if (bObj instanceof Double expD) {
+                        yield ca.pow(expD);
+                    }
+                    if (bObj instanceof Fraction expF) {
+                        yield ca.pow(expF.toDouble());
+                    }
+                    throw new IllegalArgumentException("Unknown operator for complex: " + t);
+                }
                 default -> throw new IllegalArgumentException("Unknown operator for complex: " + t);
             };
         }
