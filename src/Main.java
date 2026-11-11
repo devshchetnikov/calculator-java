@@ -7,6 +7,7 @@ import java.util.Map;
 
 public class Calculator {
 
+    // --- Fraction ---
     private static class Fraction {
         private final long num;
         private final long denom;
@@ -25,7 +26,6 @@ public class Calculator {
             long g = gcd(Math.abs(num), denom);
             num /= g;
             denom /= g;
-            // Защита от переполнения long
             if (num / g * g != num || denom / g * g != denom) {
                 throw new ArithmeticException("Long overflow in fraction arithmetic");
             }
@@ -56,7 +56,7 @@ public class Calculator {
         }
     }
 
-    // --- NEW CLASS: Complex (внутри Calculator) ---
+    // --- Complex ---
     private static class Complex {
         private final double re;
         private final double im;
@@ -100,6 +100,61 @@ public class Calculator {
         }
     }
 
+    // --- Matrix (2x2) ---
+    private static class Matrix {
+        private final double[][] m;
+
+        Matrix(double[][] data) {
+            if (data.length != 2 || data[0].length != 2 || data[1].length != 2) {
+                throw new IllegalArgumentException("Only 2x2 matrices are supported");
+            }
+            this.m = data;
+        }
+
+        Matrix add(Matrix o) {
+            return new Matrix(new double[][]{
+                {m[0][0] + o.m[0][0], m[0][1] + o.m[0][1]},
+                {m[1][0] + o.m[1][0], m[1][1] + o.m[1][1]}
+            });
+        }
+
+        Matrix sub(Matrix o) {
+            return new Matrix(new double[][]{
+                {m[0][0] - o.m[0][0], m[0][1] - o.m[0][1]},
+                {m[1][0] - o.m[1][0], m[1][1] - o.m[1][1]}
+            });
+        }
+
+        Matrix mul(Matrix o) {
+            return new Matrix(new double[][]{
+                {
+                    m[0][0] * o.m[0][0] + m[0][1] * o.m[1][0],
+                    m[0][0] * o.m[0][1] + m[0][1] * o.m[1][1]
+                },
+                {
+                    m[1][0] * o.m[0][0] + m[1][1] * o.m[1][0],
+                    m[1][0] * o.m[0][1] + m[1][1] * o.m[1][1]
+                }
+            });
+        }
+
+        Matrix mul(double scalar) {
+            return new Matrix(new double[][]{
+                {m[0][0] * scalar, m[0][1] * scalar},
+                {m[1][0] * scalar, m[1][1] * scalar}
+            });
+        }
+
+        double det() {
+            return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+        }
+
+        @Override
+        public String toString() {
+            return String.format("[[%.3f, %.3f], [%.3f, %.3f]]", m[0][0], m[0][1], m[1][0], m[1][1]);
+        }
+    }
+
     // --- Calculator State ---
     private Double lastResult = null;
     private final List<String> commandLog = new ArrayList<>();
@@ -110,6 +165,7 @@ public class Calculator {
     private static final String CMD_HELP = "/help";
     private static final String CMD_RESET = "/reset";
     private static final String CMD_LOG = "/log";
+    private static final String CMD_LOGR = "/logr"; // New: reverse log
     private static final String CMD_DEL = "/del";
     private static final String CMD_VARS = "/vars";
 
@@ -133,9 +189,10 @@ public class Calculator {
             if (line.equals(CMD_HELP)) {
                 System.out.println("Enter expressions (e.g. 2 + 2 * 2).");
                 System.out.println("Fractions: 1/2 + 3/4");
-                System.out.println("Complex: (2+3i) * 2");
+                System.out.println("Complex: (2+3i) * 2 or sin(pi/2)");
+                System.out.println("Matrix: [[1,2],[3,4]] * [[0,1],[1,0]]");
                 System.out.println("Variables: let x = 5, use 'ans'");
-                System.out.println("Commands: /exit, /help, /reset, /log, /del <n>, /vars, frac <n> <d>, asfrac");
+                System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <n>, /vars");
                 continue;
             }
             if (line.equals(CMD_RESET)) {
@@ -147,6 +204,13 @@ public class Calculator {
             }
             if (line.equals(CMD_LOG)) {
                 commandLog.forEach(System.out::println);
+                continue;
+            }
+            if (line.equals(CMD_LOGR)) {
+                // New command: print log in reverse order
+                for (int i = commandLog.size() - 1; i >= 0; i--) {
+                    System.out.println(commandLog.get(i));
+                }
                 continue;
             }
             if (line.equals(CMD_VARS)) {
@@ -171,48 +235,8 @@ public class Calculator {
                 }
                 continue;
             }
-            if (line.startsWith("frac ")) {
-                String[] parts = line.substring(5).trim().split("\\s+");
-                if (parts.length == 2) {
-                    try {
-                        Fraction f = new Fraction(Long.parseLong(parts[0]), Long.parseLong(parts[1]));
-                        logResult("frac " + parts[0] + " " + parts[1], f);
-                    } catch (Exception ex) {
-                        System.err.println("! " + ex.getMessage());
-                    }
-                } else {
-                    System.err.println("! Usage: frac <numerator> <denominator>");
-                }
-                continue;
-            }
-            if (line.equals("asfrac")) {
-                if (lastResult instanceof Double d) {
-                    // Упрощенный поиск дроби (алгоритм Фарея)
-                    long maxDenom = 1_000_000;
-                    long a = 0, b = 1, c = 1, dnom = 1;
-                    while (dnom <= maxDenom) {
-                        long mediantN = a + c;
-                        long mediantD = b + dnom;
-                        double mediantVal = (double) mediantN / mediantD;
-                        if (Math.abs(d - mediantVal) < Math.abs(d - (double) a / b)) {
-                            a = mediantN;
-                            b = mediantD;
-                        } else if (mediantVal < d) {
-                            c = mediantN;
-                            dnom = mediantD;
-                        } else {
-                            break;
-                        }
-                    }
-                    Fraction f = new Fraction(a, b);
-                    logResult("asfrac", f);
-                } else {
-                    System.err.println("! No double value to convert");
-                }
-                continue;
-            }
 
-            // Variable assignment: let x = 5 + 2
+            // Variable assignment
             if (line.startsWith("let ")) {
                 int eqIdx = line.indexOf('=');
                 if (eqIdx == -1) {
@@ -244,6 +268,7 @@ public class Calculator {
                 if (result instanceof Double d) logResult(line, d);
                 else if (result instanceof Fraction f) logResult(line, f);
                 else if (result instanceof Complex c) logResult(line, c);
+                else if (result instanceof Matrix m) logResult(line, m);
                 else if (result instanceof String s) logResult(line, s);
             } catch (Exception ex) {
                 System.err.println("! " + ex.getMessage());
@@ -272,6 +297,13 @@ public class Calculator {
         lastResult = null;
     }
 
+    private void logResult(String expr, Matrix m) {
+        String out = m.toString();
+        System.out.println("=> " + out);
+        commandLog.add(expr + " = " + out);
+        lastResult = null;
+    }
+
     private void logResult(String expr, String s) {
         System.out.println("=> " + s);
         commandLog.add(expr + " = " + s);
@@ -282,6 +314,7 @@ public class Calculator {
         if (v instanceof Double d) return formatDouble(d);
         if (v instanceof Fraction f) return f.toString();
         if (v instanceof Complex c) return c.toString();
+        if (v instanceof Matrix m) return m.toString();
         return v.toString();
     }
 
@@ -295,17 +328,15 @@ public class Calculator {
         String[] tokens = tokenize(input);
         if (tokens.length == 0) throw new IllegalArgumentException("Empty expression");
 
-        // Single token (number, fraction, complex, variable or 'ans')
         if (tokens.length == 1) {
             return fetch(tokens[0]);
         }
 
-        // Shunting-yard algorithm
         Deque<String> output = new ArrayDeque<>();
         Deque<String> ops = new ArrayDeque<>();
 
         for (String t : tokens) {
-            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z_][a-zA-Z0-9_]*") || t.contains("i")) {
+            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z_][a-zA-Z0-9_]*") || t.contains("i") || t.startsWith("[[")) {
                 output.add(t);
             } else if (t.equals("(")) {
                 ops.push(t);
@@ -314,9 +345,8 @@ public class Calculator {
                     output.add(ops.pop());
                 }
                 if (ops.isEmpty()) throw new IllegalArgumentException("Mismatched parentheses");
-                ops.pop(); // pop '('
+                ops.pop();
             } else {
-                // Operator
                 while (!ops.isEmpty() && precedence(ops.peek()) >= precedence(t) && !ops.peek().equals("(")) {
                     output.add(ops.pop());
                 }
@@ -328,11 +358,14 @@ public class Calculator {
             output.add(ops.pop());
         }
 
-        // RPN Evaluation
         Deque<Object> stack = new ArrayDeque<>();
         for (String t : output) {
-            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z_][a-zA-Z0-9_]*") || t.contains("i")) {
+            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z_][a-zA-Z0-9_]*") || t.contains("i") || t.startsWith("[[")) {
                 stack.push(fetch(t));
+            } else if (isFunction(t)) {
+                if (stack.isEmpty()) throw new IllegalArgumentException("Invalid expression");
+                Object arg = stack.pop();
+                stack.push(applyFunc(t, arg));
             } else {
                 if (stack.size() < 2) throw new IllegalArgumentException("Invalid expression");
                 Object bObj = stack.pop();
@@ -356,21 +389,38 @@ public class Calculator {
                 } else if (t.matches("-?\\d+(\\.\\d+)?")) {
                     yield Double.parseDouble(t);
                 } else if (t.matches("-?\\d+(\\.\\d+)?i")) {
-                    // Чисто мнимое число, например 3i или -2.5i
                     String imStr = t.replace("i", "");
                     if (imStr.isEmpty() || imStr.equals("+")) imStr = "1";
                     else if (imStr.equals("-")) imStr = "-1";
                     yield new Complex(0, Double.parseDouble(imStr));
+                } else if (t.startsWith("[[")) {
+                    yield parseMatrix(t);
                 } else if (variables.containsKey(t)) {
                     yield variables.get(t);
                 } else {
-                    yield t; // variable name (unbound) or complex string
+                    yield t;
                 }
             }
         };
     }
 
     private Object applyOp(Object aObj, Object bObj, String t) {
+        // Matrix operations
+        if (aObj instanceof Matrix ma && bObj instanceof Matrix mb) {
+            return switch (t) {
+                case "+" -> ma.add(mb);
+                case "-" -> ma.sub(mb);
+                case "*" -> ma.mul(mb);
+                default -> throw new IllegalArgumentException("Unknown operator for matrix: " + t);
+            };
+        }
+        if (aObj instanceof Matrix ma && bObj instanceof Double d) {
+            return switch (t) {
+                case "*" -> ma.mul(d);
+                default -> throw new IllegalArgumentException("Matrix scalar op: " + t);
+            };
+        }
+
         // Fraction + Fraction
         if (aObj instanceof Fraction fa && bObj instanceof Fraction fb) {
             return switch (t) {
@@ -391,15 +441,9 @@ public class Calculator {
                 case "*" -> ca.mul(cb);
                 case "/" -> ca.div(cb);
                 case "^" -> {
-                    if (bObj instanceof Complex expCb) {
-                        throw new IllegalArgumentException("Complex exponentiation not supported");
-                    }
-                    if (bObj instanceof Double expD) {
-                        yield ca.pow(expD);
-                    }
-                    if (bObj instanceof Fraction expF) {
-                        yield ca.pow(expF.toDouble());
-                    }
+                    if (bObj instanceof Complex expCb) throw new IllegalArgumentException("Complex exponentiation not supported");
+                    if (bObj instanceof Double expD) yield ca.pow(expD);
+                    if (bObj instanceof Fraction expF) yield ca.pow(expF.toDouble());
                     throw new IllegalArgumentException("Unknown operator for complex: " + t);
                 }
                 default -> throw new IllegalArgumentException("Unknown operator for complex: " + t);
@@ -446,7 +490,7 @@ public class Calculator {
             return parseComplexCalcDouble(b, ca, t, true);
         }
 
-        // Complex number string arithmetic (very basic support)
+        // Complex string arithmetic
         if (aObj instanceof String sa && bObj instanceof String sb) {
             if (sa.contains("i") && sb.contains("i")) {
                 return "Complex string arithmetic not supported. Use parentheses.";
@@ -474,13 +518,11 @@ public class Calculator {
         throw new IllegalArgumentException("Unsupported types: " + aObj.getClass() + " " + bObj.getClass());
     }
 
-    // Helper for Double <op> Complex
     private Complex parseComplexCalcDouble(double real, Complex c, String op) {
         return parseComplexCalcDouble(real, c, op, false);
     }
     private Complex parseComplexCalcDouble(double real, Complex c, String op, boolean reverse) {
         if (reverse) {
-            // Complex <op> Double
             return switch (op) {
                 case "+" -> c.add(new Complex(real, 0));
                 case "-" -> c.sub(new Complex(real, 0));
@@ -489,7 +531,6 @@ public class Calculator {
                 default -> throw new IllegalArgumentException("Unsupported op for complex: " + op);
             };
         } else {
-            // Double <op> Complex
             return switch (op) {
                 case "+" -> new Complex(real, 0).add(c);
                 case "-" -> new Complex(real, 0).sub(c);
@@ -500,7 +541,6 @@ public class Calculator {
         }
     }
 
-    // Helper for (Complex String) <op> Double
     private String parseComplexCalc(String comp, double real, String op) {
         return parseComplexCalc(comp, real, op, false);
     }
@@ -545,6 +585,58 @@ public class Calculator {
         }
         if (sb.length() == 0) return "0";
         return sb.toString();
+    }
+
+    // --- New: Function handling ---
+    private boolean isFunction(String token) {
+        return switch (token) {
+            case "sin", "cos", "tan", "log", "ln", "sqrt", "abs", "det" -> true;
+            default -> false;
+        };
+    }
+
+    private Object applyFunc(String func, Object arg) {
+        double val;
+        if (arg instanceof Double d) val = d;
+        else if (arg instanceof Fraction f) val = f.toDouble();
+        else if (arg instanceof Complex c) {
+            if (func.equals("abs")) return Math.hypot(c.re, c.im);
+            throw new IllegalArgumentException("Function " + func + " not supported for complex numbers");
+        } else if (arg instanceof Matrix m) {
+            if (func.equals("det")) return m.det();
+            throw new IllegalArgumentException("Function " + func + " not supported for matrices");
+        } else {
+            throw new IllegalArgumentException("Function " + func + " applied to unsupported type");
+        }
+
+        return switch (func) {
+            case "sin" -> Math.sin(val);
+            case "cos" -> Math.cos(val);
+            case "tan" -> Math.tan(val);
+            case "log" -> Math.log10(val);
+            case "ln" -> Math.log(val);
+            case "sqrt" -> Math.sqrt(val);
+            case "abs" -> Math.abs(val);
+            default -> throw new IllegalArgumentException("Unknown function: " + func);
+        };
+    }
+
+    // --- New: Matrix parsing ---
+    private Matrix parseMatrix(String s) {
+        s = s.replaceAll("\\s+", "");
+        if (!s.startsWith("[[") || !s.endsWith("]]")) throw new IllegalArgumentException("Invalid matrix format");
+        String inner = s.substring(2, s.length() - 2);
+        String[] rows = inner.split("],\\[");
+        if (rows.length != 2) throw new IllegalArgumentException("Only 2x2 matrices are supported");
+        double[][] data = new double[2][2];
+        String[] r0 = rows[0].split(",");
+        String[] r1 = rows[1].split(",");
+        if (r0.length != 2 || r1.length != 2) throw new IllegalArgumentException("Only 2x2 matrices are supported");
+        data[0][0] = Double.parseDouble(r0[0]);
+        data[0][1] = Double.parseDouble(r0[1]);
+        data[1][0] = Double.parseDouble(r1[0]);
+        data[1][1] = Double.parseDouble(r1[1]);
+        return new Matrix(data);
     }
 
     private String[] tokenize(String input) {
