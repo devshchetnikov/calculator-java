@@ -1,12 +1,6 @@
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class Calculator {
-
     // --- Fraction ---
     private static class Fraction {
         private final long num;
@@ -39,11 +33,6 @@ public class Calculator {
 
         double toDouble() { return (double) num / (double) denom; }
 
-        private static long gcd(long a, long b) {
-            while (b != 0) { long t = b; b = a % b; a = t; }
-            return a;
-        }
-
         @Override
         public String toString() {
             if (denom == 1) return Long.toString(num);
@@ -53,6 +42,11 @@ public class Calculator {
                 return (num < 0 ? "-" : "") + Math.abs(whole) + " " + rest + "/" + denom;
             }
             return num + "/" + denom;
+        }
+
+        private static long gcd(long a, long b) {
+            while (b != 0) { long t = b; b = a % b; a = t; }
+            return a;
         }
     }
 
@@ -86,7 +80,7 @@ public class Calculator {
             StringBuilder sb = new StringBuilder();
             if (Math.abs(re) > 1e-9) sb.append(formatDouble(re));
             if (Math.abs(im) > 1e-9) {
-                if (sb.length() > 0 && im > 0) sb.append("+");
+                if (sb.length() > 0 && im >= 0) sb.append("+");
                 if (Math.abs(im - 1.0) < 1e-9) {
                     sb.append("i");
                 } else if (Math.abs(im + 1.0) < 1e-9) {
@@ -155,7 +149,7 @@ public class Calculator {
         }
     }
 
-    // --- Calculator State ---
+    // --- State ---
     private Double lastResult = null;
     private final List<String> commandLog = new ArrayList<>();
     private final Map<String, Object> variables = new HashMap<>();
@@ -165,7 +159,7 @@ public class Calculator {
     private static final String CMD_HELP = "/help";
     private static final String CMD_RESET = "/reset";
     private static final String CMD_LOG = "/log";
-    private static final String CMD_LOGR = "/logr"; // New: reverse log
+    private static final String CMD_LOGR = "/logr"; 
     private static final String CMD_DEL = "/del";
     private static final String CMD_VARS = "/vars";
 
@@ -174,7 +168,7 @@ public class Calculator {
     }
 
     private void repl() {
-        java.util.Scanner scanner = new java.util.Scanner(System.in);
+        Scanner scanner = new Scanner(System.in);
         System.out.println("Calculator REPL. Type /help for commands.");
 
         while (true) {
@@ -182,415 +176,57 @@ public class Calculator {
             String line = scanner.nextLine().trim();
 
             if (line.isEmpty()) continue;
-            if (line.equals(CMD_EXIT)) {
-                System.out.println("Bye!");
-                break;
-            }
+            if (line.equals(CMD_EXIT)) break;
             if (line.equals(CMD_HELP)) {
-                System.out.println("Enter expressions (e.g. 2 + 2 * 2).");
-                System.out.println("Fractions: 1/2 + 3/4");
-                System.out.println("Complex: (2+3i) * 2 or sin(pi/2)");
-                System.out.println("Matrix: [[1,2],[3,4]] * [[0,1],[1,0]]");
-                System.out.println("Variables: let x = 5, use 'ans'");
-                System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <n>, /vars");
+                System.out.println("Enter expressions: 2+2*2, 1/2+3/4, sin(pi/2)");
+                System.out.println("Matrix: [[1,2],[3,4]] * [[0,1],[1,0]], Functions: exp, ln, abs");
+                System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del N, /vars");
                 continue;
             }
-            if (line.equals(CMD_RESET)) {
-                lastResult = null;
-                commandLog.clear();
-                variables.clear();
-                System.out.println("State reset.");
-                continue;
-            }
-            if (line.equals(CMD_LOG)) {
-                commandLog.forEach(System.out::println);
-                continue;
-            }
-            if (line.equals(CMD_LOGR)) {
-                // New command: print log in reverse order
-                for (int i = commandLog.size() - 1; i >= 0; i--) {
-                    System.out.println(commandLog.get(i));
-                }
-                continue;
-            }
-            if (line.equals(CMD_VARS)) {
-                if (variables.isEmpty()) {
-                    System.out.println("(no variables defined)");
-                } else {
-                    variables.forEach((k, v) -> System.out.println(k + " = " + formatValue(v)));
-                }
-                continue;
-            }
-            if (line.startsWith(CMD_DEL + " ")) {
-                try {
-                    int n = Integer.parseInt(line.substring(CMD_DEL.length() + 1).trim());
-                    if (n > 0 && n <= commandLog.size()) {
-                        commandLog.remove(commandLog.size() - n);
-                        System.out.println("Deleted log #" + n);
-                    } else {
-                        System.err.println("! Invalid log index");
-                    }
-                } catch (Exception ex) {
-                    System.err.println("! Usage: /del <number>");
-                }
-                continue;
-            }
-
-            // Variable assignment
-            if (line.startsWith("let ")) {
-                int eqIdx = line.indexOf('=');
-                if (eqIdx == -1) {
-                    System.err.println("! Invalid assignment. Use: let name = expression");
-                    continue;
-                }
-                String name = line.substring(4, eqIdx).trim();
-                String expr = line.substring(eqIdx + 1).trim();
-                if (!name.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
-                    System.err.println("! Invalid variable name");
-                    continue;
-                }
-                try {
-                    Object value = evaluate(expr);
-                    if (value instanceof String) {
-                        System.err.println("! Cannot assign complex string to variable");
-                        continue;
-                    }
-                    variables.put(name, value);
-                    logResult("let " + name + " = " + expr, value);
-                } catch (Exception ex) {
-                    System.err.println("! " + ex.getMessage());
-                }
-                continue;
-            }
-
             try {
                 Object result = evaluate(line);
-                if (result instanceof Double d) logResult(line, d);
-                else if (result instanceof Fraction f) logResult(line, f);
-                else if (result instanceof Complex c) logResult(line, c);
-                else if (result instanceof Matrix m) logResult(line, m);
-                else if (result instanceof String s) logResult(line, s);
-            } catch (Exception ex) {
-                System.err.println("! " + ex.getMessage());
+                logResult(line, result);
+            } catch (ArithmeticException | IllegalArgumentException ex) {
+                System.err.printf("! Error: %s%n", ex.getMessage());
             }
         }
         scanner.close();
     }
 
-    private void logResult(String expr, Double d) {
-        System.out.println("=> " + formatDouble(d));
-        commandLog.add(expr + " = " + formatDouble(d));
-        lastResult = d;
-    }
-
-    private void logResult(String expr, Fraction f) {
-        String out = f.toString();
-        System.out.println("=> " + out);
-        commandLog.add(expr + " = " + out);
-        lastResult = f.toDouble();
-    }
-
-    private void logResult(String expr, Complex c) {
-        String out = c.toString();
-        System.out.println("=> " + out);
-        commandLog.add(expr + " = " + out);
-        lastResult = null;
-    }
-
-    private void logResult(String expr, Matrix m) {
-        String out = m.toString();
-        System.out.println("=> " + out);
-        commandLog.add(expr + " = " + out);
-        lastResult = null;
-    }
-
-    private void logResult(String expr, String s) {
-        System.out.println("=> " + s);
-        commandLog.add(expr + " = " + s);
-        lastResult = null;
-    }
-
-    private String formatValue(Object v) {
-        if (v instanceof Double d) return formatDouble(d);
-        if (v instanceof Fraction f) return f.toString();
-        if (v instanceof Complex c) return c.toString();
-        if (v instanceof Matrix m) return m.toString();
-        return v.toString();
-    }
-
-    private String formatDouble(Double d) {
-        if (d == null) return "null";
-        long rounded = Math.round(d);
-        return Math.abs(d - rounded) < 1e-10 ? Long.toString(rounded) : d.toString();
-    }
-
-    private Object evaluate(String input) {
-        String[] tokens = tokenize(input);
-        if (tokens.length == 0) throw new IllegalArgumentException("Empty expression");
-
-        if (tokens.length == 1) {
-            return fetch(tokens[0]);
-        }
-
-        Deque<String> output = new ArrayDeque<>();
-        Deque<String> ops = new ArrayDeque<>();
-
-        for (String t : tokens) {
-            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z_][a-zA-Z0-9_]*") || t.contains("i") || t.startsWith("[[")) {
-                output.add(t);
-            } else if (t.equals("(")) {
-                ops.push(t);
-            } else if (t.equals(")")) {
-                while (!ops.isEmpty() && !ops.peek().equals("(")) {
-                    output.add(ops.pop());
-                }
-                if (ops.isEmpty()) throw new IllegalArgumentException("Mismatched parentheses");
-                ops.pop();
-            } else {
-                while (!ops.isEmpty() && precedence(ops.peek()) >= precedence(t) && !ops.peek().equals("(")) {
-                    output.add(ops.pop());
-                }
-                ops.push(t);
-            }
-        }
-        while (!ops.isEmpty()) {
-            if (ops.peek().equals("(") || ops.peek().equals(")")) throw new IllegalArgumentException("Mismatched parentheses");
-            output.add(ops.pop());
-        }
-
-        Deque<Object> stack = new ArrayDeque<>();
-        for (String t : output) {
-            if (t.matches("-?\\d+(\\.\\d+)?") || t.matches("-?\\d+/\\d+") || t.matches("[a-zA-Z_][a-zA-Z0-9_]*") || t.contains("i") || t.startsWith("[[")) {
-                stack.push(fetch(t));
-            } else if (isFunction(t)) {
-                if (stack.isEmpty()) throw new IllegalArgumentException("Invalid expression");
-                Object arg = stack.pop();
-                stack.push(applyFunc(t, arg));
-            } else {
-                if (stack.size() < 2) throw new IllegalArgumentException("Invalid expression");
-                Object bObj = stack.pop();
-                Object aObj = stack.pop();
-                stack.push(applyOp(aObj, bObj, t));
-            }
-        }
-        if (stack.size() != 1) throw new IllegalArgumentException("Invalid expression");
-        return stack.pop();
-    }
-
-    private Object fetch(String t) {
-        return switch (t) {
-            case "ans" -> lastResult != null ? lastResult : 0.0;
-            case "pi" -> Math.PI;
-            case "e" -> Math.E;
-            default -> {
-                if (t.matches("-?\\d+/\\d+")) {
-                    String[] parts = t.split("/");
-                    yield new Fraction(Long.parseLong(parts[0]), Long.parseLong(parts[1]));
-                } else if (t.matches("-?\\d+(\\.\\d+)?")) {
-                    yield Double.parseDouble(t);
-                } else if (t.matches("-?\\d+(\\.\\d+)?i")) {
-                    String imStr = t.replace("i", "");
-                    if (imStr.isEmpty() || imStr.equals("+")) imStr = "1";
-                    else if (imStr.equals("-")) imStr = "-1";
-                    yield new Complex(0, Double.parseDouble(imStr));
-                } else if (t.startsWith("[[")) {
-                    yield parseMatrix(t);
-                } else if (variables.containsKey(t)) {
-                    yield variables.get(t);
-                } else {
-                    yield t;
-                }
-            }
-        };
-    }
-
-    private Object applyOp(Object aObj, Object bObj, String t) {
-        // Matrix operations
-        if (aObj instanceof Matrix ma && bObj instanceof Matrix mb) {
-            return switch (t) {
-                case "+" -> ma.add(mb);
-                case "-" -> ma.sub(mb);
-                case "*" -> ma.mul(mb);
-                default -> throw new IllegalArgumentException("Unknown operator for matrix: " + t);
-            };
-        }
-        if (aObj instanceof Matrix ma && bObj instanceof Double d) {
-            return switch (t) {
-                case "*" -> ma.mul(d);
-                default -> throw new IllegalArgumentException("Matrix scalar op: " + t);
-            };
-        }
-
-        // Fraction + Fraction
-        if (aObj instanceof Fraction fa && bObj instanceof Fraction fb) {
-            return switch (t) {
-                case "+" -> fa.add(fb);
-                case "-" -> fa.sub(fb);
-                case "*" -> fa.mul(fb);
-                case "/" -> fa.div(fb);
-                case "^" -> Math.pow(fa.toDouble(), fb.toDouble());
-                default -> throw new IllegalArgumentException("Unknown operator for fraction: " + t);
-            };
-        }
-
-        // Complex + Complex
-        if (aObj instanceof Complex ca && bObj instanceof Complex cb) {
-            return switch (t) {
-                case "+" -> ca.add(cb);
-                case "-" -> ca.sub(cb);
-                case "*" -> ca.mul(cb);
-                case "/" -> ca.div(cb);
-                case "^" -> {
-                    if (bObj instanceof Complex expCb) throw new IllegalArgumentException("Complex exponentiation not supported");
-                    if (bObj instanceof Double expD) yield ca.pow(expD);
-                    if (bObj instanceof Fraction expF) yield ca.pow(expF.toDouble());
-                    throw new IllegalArgumentException("Unknown operator for complex: " + t);
-                }
-                default -> throw new IllegalArgumentException("Unknown operator for complex: " + t);
-            };
-        }
-
-        // Mixed Fraction and Double
-        if (aObj instanceof Double a) {
-            if (bObj instanceof Fraction fb) {
-                return switch (t) {
-                    case "+" -> a + fb.toDouble();
-                    case "-" -> a - fb.toDouble();
-                    case "*" -> a * fb.toDouble();
-                    case "/" -> a / fb.toDouble();
-                    case "^" -> Math.pow(a, fb.toDouble());
-                    default -> throw new IllegalArgumentException("Mixed op (Double/Fraction): " + t);
-                };
-            }
-            if (bObj instanceof Double b) {
-                return switch (t) {
-                    case "+" -> a + b;
-                    case "-" -> a - b;
-                    case "*" -> a * b;
-                    case "/" -> a / b;
-                    case "^" -> Math.pow(a, b);
-                    default -> throw new IllegalArgumentException("Unknown operator: " + t);
-                };
-            }
-            if (bObj instanceof Complex cb) {
-                return parseComplexCalcDouble(a, cb, t);
-            }
-        }
-        if (aObj instanceof Fraction fa && bObj instanceof Double b) {
-            return switch (t) {
-                case "+" -> fa.toDouble() + b;
-                case "-" -> fa.toDouble() - b;
-                case "*" -> fa.toDouble() * b;
-                case "/" -> fa.toDouble() / b;
-                case "^" -> Math.pow(fa.toDouble(), b);
-                default -> throw new IllegalArgumentException("Mixed op (Fraction/Double): " + t);
-            };
-        }
-        if (aObj instanceof Complex ca && bObj instanceof Double b) {
-            return parseComplexCalcDouble(b, ca, t, true);
-        }
-
-        // Complex string arithmetic
-        if (aObj instanceof String sa && bObj instanceof String sb) {
-            if (sa.contains("i") && sb.contains("i")) {
-                return "Complex string arithmetic not supported. Use parentheses.";
-            }
-            if (sa.contains("i")) {
-                try {
-                    double real = Double.parseDouble(sb);
-                    return parseComplexCalc(sa, real, t);
-                } catch (Exception ignored) {}
-            }
-            if (sb.contains("i")) {
-                try {
-                    double real = Double.parseDouble(sa);
-                    return parseComplexCalc(sb, real, t, true);
-                } catch (Exception ignored) {}
-            }
-        }
-        if (aObj instanceof String s && bObj instanceof Double d) {
-            if (s.contains("i")) return parseComplexCalc(s, d, t);
-        }
-        if (aObj instanceof Double d && bObj instanceof String s) {
-            if (s.contains("i")) return parseComplexCalc(s, d, t, true);
-        }
-
-        throw new IllegalArgumentException("Unsupported types: " + aObj.getClass() + " " + bObj.getClass());
-    }
-
-    private Complex parseComplexCalcDouble(double real, Complex c, String op) {
-        return parseComplexCalcDouble(real, c, op, false);
-    }
-    private Complex parseComplexCalcDouble(double real, Complex c, String op, boolean reverse) {
-        if (reverse) {
-            return switch (op) {
-                case "+" -> c.add(new Complex(real, 0));
-                case "-" -> c.sub(new Complex(real, 0));
-                case "*" -> c.mul(new Complex(real, 0));
-                case "/" -> c.div(new Complex(real, 0));
-                default -> throw new IllegalArgumentException("Unsupported op for complex: " + op);
-            };
-        } else {
-            return switch (op) {
-                case "+" -> new Complex(real, 0).add(c);
-                case "-" -> new Complex(real, 0).sub(c);
-                case "*" -> new Complex(real, 0).mul(c);
-                case "/" -> new Complex(real, 0).div(c);
-                default -> throw new IllegalArgumentException("Unsupported op for complex: " + op);
-            };
+    private void logResult(String expr, Object value) throws ArithmeticException {
+        if (value instanceof Double d) {
+            checkOverflow(d);
+            System.out.println("=> " + formatDouble(d));
+            commandLog.add(expr + " = " + formatDouble(d));
+            lastResult = d;
+        } else if (value instanceof Fraction f) {
+            System.out.println("=> " + f);
+            commandLog.add(expr + " = " + f);
+            lastResult = f.toDouble();
+        } else if (value instanceof Complex c) {
+            System.out.println("=> " + c);
+            commandLog.add(expr + " = " + c);
+            lastResult = null;
+        } else if (value instanceof Matrix m) {
+            System.out.println("=> " + m);
+            commandLog.add(expr + " = " + m);
+            lastResult = null;
+        } else if (value instanceof String s) {
+            System.out.println("=> " + s);
+            commandLog.add(expr + " = " + s);
+            lastResult = null;
         }
     }
 
-    private String parseComplexCalc(String comp, double real, String op) {
-        return parseComplexCalc(comp, real, op, false);
-    }
-    private String parseComplexCalc(String comp, double real, String op, boolean reverse) {
-        String[] parts = comp.replace("i", "").split("(?=[+-])");
-        double realPart = 0, imagPart = 0;
-        for (String p : parts) {
-            if (p.isEmpty()) continue;
-            if (p.equals("+") || p.equals("-")) p = p + "1";
-            if (p.endsWith("+") || p.endsWith("-")) p = p + "1";
-            if (p.contains("i")) {
-                imagPart += Double.parseDouble(p.replace("i", ""));
-            } else {
-                realPart += Double.parseDouble(p);
-            }
+    private void checkOverflow(Double d) throws ArithmeticException {
+        if (d == null || !Double.isFinite(d)) {
+            throw new ArithmeticException("Overflow or division by zero");
         }
-        if (reverse) { double tmp = realPart; realPart = real; real = tmp; }
-
-        double resR = 0, resI = 0;
-        switch (op) {
-            case "+" -> { resR = realPart + real; resI = imagPart; }
-            case "-" -> { resR = realPart - real; resI = imagPart; }
-            case "*" -> { resR = realPart * real; resI = imagPart * real; }
-            case "/" -> { resR = realPart / real; resI = imagPart / real; }
-            default -> throw new IllegalArgumentException("Unsupported op for complex: " + op);
-        }
-        return formatComplex(resR, resI);
     }
 
-    private String formatComplex(double re, double im) {
-        StringBuilder sb = new StringBuilder();
-        if (Math.abs(re) > 1e-9) sb.append(formatDouble(re));
-        if (Math.abs(im) > 1e-9) {
-            if (sb.length() > 0 && im > 0) sb.append("+");
-            if (Math.abs(im - 1.0) < 1e-9) {
-                sb.append("i");
-            } else if (Math.abs(im + 1.0) < 1e-9) {
-                sb.append("-i");
-            } else {
-                sb.append(formatDouble(im)).append("i");
-            }
-        }
-        if (sb.length() == 0) return "0";
-        return sb.toString();
-    }
-
-    // --- New: Function handling ---
     private boolean isFunction(String token) {
         return switch (token) {
-            case "sin", "cos", "tan", "log", "ln", "sqrt", "abs", "det" -> true;
+            case "sin", "cos", "tan", "ln", "log", "sqrt", "abs", "exp" -> true;
             default -> false;
         };
     }
@@ -600,48 +236,86 @@ public class Calculator {
         if (arg instanceof Double d) val = d;
         else if (arg instanceof Fraction f) val = f.toDouble();
         else if (arg instanceof Complex c) {
-            if (func.equals("abs")) return Math.hypot(c.re, c.im);
-            throw new IllegalArgumentException("Function " + func + " not supported for complex numbers");
+            if ("abs".equals(func)) return Math.hypot(c.re, c.im);
+            throw new IllegalArgumentException("Function not supported for complex numbers");
         } else if (arg instanceof Matrix m) {
-            if (func.equals("det")) return m.det();
-            throw new IllegalArgumentException("Function " + func + " not supported for matrices");
+            if ("det".equals(func)) return m.det();
+            throw new IllegalArgumentException("Function not supported for matrices");
         } else {
-            throw new IllegalArgumentException("Function " + func + " applied to unsupported type");
+            throw new IllegalArgumentException("Unsupported type for function");
         }
 
         return switch (func) {
             case "sin" -> Math.sin(val);
             case "cos" -> Math.cos(val);
             case "tan" -> Math.tan(val);
-            case "log" -> Math.log10(val);
             case "ln" -> Math.log(val);
+            case "log" -> Math.log10(val);
             case "sqrt" -> Math.sqrt(val);
             case "abs" -> Math.abs(val);
+            case "exp" -> Math.exp(val);
             default -> throw new IllegalArgumentException("Unknown function: " + func);
         };
     }
 
-    // --- New: Matrix parsing ---
-    private Matrix parseMatrix(String s) {
-        s = s.replaceAll("\\s+", "");
-        if (!s.startsWith("[[") || !s.endsWith("]]")) throw new IllegalArgumentException("Invalid matrix format");
-        String inner = s.substring(2, s.length() - 2);
-        String[] rows = inner.split("],\\[");
-        if (rows.length != 2) throw new IllegalArgumentException("Only 2x2 matrices are supported");
+    private Object fetch(String name) {
+        return switch (name) {
+            case "ans" -> lastResult != null ? lastResult : 0.0;
+            case "pi" -> Math.PI;
+            case "e" -> Math.E;
+            case "phi" -> (Math.sqrt(5) + 1) / 2; // Золотое сечение
+            case "gamma" -> 0.577_215_664_901_532_860_606_512_09; // Эйлера–Маскерони
+            default -> {
+                if (name.matches("-?\\d+/\\d+")) yield Fraction.of(Long.parseLong(name.split("/")[0]), Long.parseLong(name.split("/")[1]));
+                if (name.matches("-?\\d+(?:\\.\\d+)?")) yield Double.parseDouble(name);
+                if (name.contains("i") && !name.startsWith("[[")) yield parseComplex(name);
+                if (variables.containsKey(name)) yield variables.get(name);
+                if (name.startsWith("[[")) yield parseMatrix(name);
+                yield name;
+            }
+        };
+    }
+
+    private String formatDouble(Double d) {
+        return Math.abs(d - Math.round(d)) < 1e-9 ? Long.toString(Math.round(d)) : d.toString();
+    }
+
+    private Complex parseComplex(String comp) {
+        double realPart = 0, imagPart = 0;
+        for (var part : comp.replaceAll("\\s+", "").split("(?=[+-])")) {
+            if (!part.endsWith("i")) {
+                realPart += Double.parseDouble(part);
+                continue;
+            }
+            var n = part.substring(0, part.length()-1).replaceFirst("^([+-]?)$", "$11");
+            imagPart += Double.parseDouble(n);
+        }
+        return new Complex(realPart, imagPart);
+    }
+
+    private Matrix parseMatrix(String input) {
+        var inner = input.trim()
+            .substring(input.indexOf('[')+1, input.lastIndexOf(']'))
+            .replaceAll("\\s+", "");
+        var rows = inner.split("],\\[");
+        if (rows.length != 2) throw new IllegalArgumentException("Invalid matrix size");
+        
         double[][] data = new double[2][2];
-        String[] r0 = rows[0].split(",");
-        String[] r1 = rows[1].split(",");
-        if (r0.length != 2 || r1.length != 2) throw new IllegalArgumentException("Only 2x2 matrices are supported");
-        data[0][0] = Double.parseDouble(r0[0]);
-        data[0][1] = Double.parseDouble(r0[1]);
-        data[1][0] = Double.parseDouble(r1[0]);
-        data[1][1] = Double.parseDouble(r1[1]);
+        int i = 0;
+        for (var row : rows) {
+            var cells = row.split(",");
+            if (cells.length != 2) throw new IllegalArgumentException("Invalid matrix size");
+            data[i++] = Arrays.stream(cells)
+                .mapToDouble(Double::parseDouble)
+                .toArray();
+        }
         return new Matrix(data);
     }
 
     private String[] tokenize(String input) {
-        String spaced = input.replaceAll("([()+\\-*/^])", " $1 ");
-        return spaced.trim().split("\\s+");
+        return input.trim()
+            .replaceAll("([()+\\-*/^])", " $1 ")
+            .split("\\s+");
     }
 
     private int precedence(String op) {
@@ -651,5 +325,118 @@ public class Calculator {
             case "+", "-" -> 2;
             default -> 0;
         };
+    }
+
+    private Object evaluate(String input) {
+        var tokens = tokenize(input);
+
+        if (tokens.length == 0) throw new IllegalArgumentException("Empty expression");
+        if (tokens.length == 1) return fetch(tokens[0]);
+
+        Deque<String> output = new ArrayDeque<>();
+        Deque<String> ops = new ArrayDeque<>();
+
+        for (var token : tokens) {
+            if (isFunction(token)) {
+                ops.push(token);
+            } else if ("(".equals(token)) {
+                ops.push(token);
+            } else if (")".equals(token)) {
+                while (!ops.isEmpty() && !"(".equals(ops.peek())) {
+                    output.addLast(ops.pop());
+                }
+                if (ops.isEmpty()) throw new IllegalArgumentException("Mismatched parentheses");
+                ops.pop(); // '('
+                if (!ops.isEmpty() && isFunction(ops.peek())) {
+                    output.addLast(ops.pop()); // Функция после ")"
+                }
+            } else if ("+".equals(token) || "-".equals(token) ||
+                       "*".equals(token) || "/".equals(token) || "^".equals(token)) {
+                while (!ops.isEmpty() &&
+                       !"(" .equals(ops.peek()) &&
+                        precedence(ops.peek()) >= precedence(token)) {
+                    output.addLast(ops.pop());
+                }
+                ops.push(token);
+            } else {
+                output.addLast(token);
+            }
+        }
+
+        while (!ops.isEmpty()) {
+            if ("(".equals(ops.peek()) || ")".equals(ops.peek()))
+                throw new IllegalArgumentException("Mismatched parentheses");
+            output.addLast(ops.pop());
+        }
+
+        Deque<Object> stack = new ArrayDeque<>();
+
+        for (var token : output) {
+            if (isFunction(token)) {
+                var arg = stack.pop();
+                stack.push(applyFunc(token, arg));
+            } else if ("+".equals(token) || "-".equals(token) ||
+                       "*".equals(token) || "/".equals(token) || "^".equals(token)) {
+                var right = stack.pop();
+                var left = stack.pop();
+                stack.push(applyOp(left, right, token));
+            } else {
+                stack.push(fetch(token));
+            }
+        }
+
+        if (stack.size() != 1) throw new IllegalArgumentException("Invalid expression");
+        return stack.pop();
+    }
+
+    private Object applyOp(Object left, Object right, String op) {
+        if (left instanceof Matrix ma && right instanceof Matrix mb) {
+            return switch (op) {
+                case "+" -> ma.add(mb);
+                case "-" -> ma.sub(mb);
+                case "*" -> ma.mul(mb);
+                default -> throw new IllegalArgumentException("Matrix operation not supported: " + op);
+            };
+        }
+
+        if (left instanceof Matrix ma && right instanceof Number rn) {
+            return switch (op) {
+                case "*" -> ma.mul(rn.doubleValue());
+                default -> throw new IllegalArgumentException("Matrix scalar operation not supported: " + op);
+            };
+        }
+
+        if ((left instanceof Fraction fa && right instanceof Fraction fb) ||
+            (left instanceof Number na && right instanceof Number nb)) {
+            var la = (Number) left;
+            var ra = (Number) right;
+
+            return switch (op) {
+                case "+" -> la.doubleValue() + ra.doubleValue();
+                case "-" -> la.doubleValue() - ra.doubleValue();
+                case "*" -> la.doubleValue() * ra.doubleValue();
+                case "/" -> la.doubleValue() / ra.doubleValue();
+                case "^" -> Math.pow(la.doubleValue(), ra.doubleValue());
+                default -> throw new IllegalArgumentException("Operation not supported: " + op);
+            };
+        }
+
+        if (left instanceof Complex ca && right instanceof Complex cb) {
+            return switch (op) {
+                case "+" -> ca.add(cb);
+                case "-" -> ca.sub(cb);
+                case "*" -> ca.mul(cb);
+                case "/" -> ca.div(cb);
+                case "^" -> {
+                    if (!(right instanceof Number)) throw new IllegalArgumentException("Exponent must be numeric");
+                    yield ca.pow(((Number) right).doubleValue());
+                }
+                default -> throw new IllegalArgumentException("Complex operation not supported: " + op);
+            };
+        }
+
+        throw new IllegalArgumentException(
+            "Incompatible types for operator '" + op +
+            "': " + left.getClass().getSimpleName() + ", " + right.getClass().getSimpleName());
     }
 }
