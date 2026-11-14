@@ -163,6 +163,8 @@ public class Calculator {
     private static final String CMD_DEL = "/del";
     private static final String CMD_VARS = "/vars";
 
+    private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma");
+
     public static void main(String[] args) {
         new Calculator().repl();
     }
@@ -180,9 +182,23 @@ public class Calculator {
             if (line.equals(CMD_HELP)) {
                 System.out.println("Enter expressions: 2+2*2, 1/2+3/4, sin(pi/2)");
                 System.out.println("Matrix: [[1,2],[3,4]] * [[0,1],[1,0]], Functions: exp, ln, abs");
-                System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del N, /vars");
+                System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <name|N>, /vars");
+                System.out.println("Variables: x = 5, y = ans * 2");
                 continue;
             }
+
+            // Command handlers
+            if (line.startsWith("/")) {
+                handleCommand(line);
+                continue;
+            }
+
+            // Variable assignment
+            if (line.contains("=")) {
+                handleAssignment(line);
+                continue;
+            }
+
             try {
                 Object result = evaluate(line);
                 logResult(line, result);
@@ -191,6 +207,89 @@ public class Calculator {
             }
         }
         scanner.close();
+    }
+
+    private void handleCommand(String line) {
+        String[] parts = line.split("\\s+", 2);
+        String cmd = parts[0];
+        String arg = parts.length > 1 ? parts[1] : null;
+
+        switch (cmd) {
+            case CMD_LOG -> commandLog.forEach(System.out::println);
+            case CMD_LOGR -> {
+                List<String> reversed = new ArrayList<>(commandLog);
+                Collections.reverse(reversed);
+                reversed.forEach(System.out::println);
+            }
+            case CMD_DEL -> {
+                if (arg == null) {
+                    if (!commandLog.isEmpty()) {
+                        commandLog.remove(commandLog.size() - 1);
+                        System.out.println("Last command removed from log.");
+                    }
+                } else if (arg.matches("-?\\d+")) {
+                    int index = Integer.parseInt(arg);
+                    if (index > 0 && index <= commandLog.size()) {
+                        commandLog.remove(index - 1);
+                        System.out.println("Command #" + index + " removed from log.");
+                    } else {
+                        System.err.println("! Invalid log index");
+                    }
+                } else {
+                    if (variables.containsKey(arg)) {
+                        variables.remove(arg);
+                        System.out.println("Variable '" + arg + "' deleted.");
+                    } else {
+                        System.err.println("! Variable '" + arg + "' not found");
+                    }
+                }
+            }
+            case CMD_VARS -> {
+                if (variables.isEmpty()) {
+                    System.out.println("(no user variables)");
+                } else {
+                    variables.forEach((k, v) -> System.out.println(k + " = " + formatValue(v)));
+                }
+            }
+            case CMD_RESET -> {
+                commandLog.clear();
+                variables.clear();
+                lastResult = null;
+                System.out.println("Calculator state reset.");
+            }
+            default -> System.err.println("! Unknown command: " + cmd);
+        }
+    }
+
+    private void handleAssignment(String line) {
+        String[] parts = line.split("=", 2);
+        String name = parts[0].trim();
+        String expr = parts[1].trim();
+
+        if (RESERVED_NAMES.contains(name)) {
+            System.err.println("! Cannot assign to reserved name: " + name);
+            return;
+        }
+        if (name.startsWith("/")) {
+            System.err.println("! Cannot assign to command: " + name);
+            return;
+        }
+        if (!name.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
+            System.err.println("! Invalid variable name: " + name);
+            return;
+        }
+
+        try {
+            Object value = evaluate(expr);
+            if (value instanceof Matrix || value instanceof Complex) {
+                System.err.println("! Cannot assign complex or matrix types to variables yet");
+                return;
+            }
+            variables.put(name, value);
+            logResult(line, value);
+        } catch (ArithmeticException | IllegalArgumentException ex) {
+            System.err.printf("! Error: %s%n", ex.getMessage());
+        }
     }
 
     private void logResult(String expr, Object value) throws ArithmeticException {
@@ -224,9 +323,15 @@ public class Calculator {
         }
     }
 
+    private String formatValue(Object value) {
+        if (value instanceof Double d) return formatDouble(d);
+        if (value instanceof Fraction f) return f.toString();
+        return value.toString();
+    }
+
     private boolean isFunction(String token) {
         return switch (token) {
-            case "sin", "cos", "tan", "ln", "log", "sqrt", "abs", "exp" -> true;
+            case "sin", "cos", "tan", "ln", "log", "sqrt", "abs", "exp", "det" -> true;
             default -> false;
         };
     }
@@ -313,8 +418,14 @@ public class Calculator {
     }
 
     private String[] tokenize(String input) {
-        return input.trim()
+        // Фикс для отрицательных дробей: защищаем минус, стоящий сразу после ( или в начале строки
+        String protectedInput = input.trim()
+            .replaceAll("(?<=^)-", "NEG")
+            .replaceAll("(?<=[\\(\\+\\-*/^])-(?=\\d)", "NEG");
+
+        return protectedInput
             .replaceAll("([()+\\-*/^])", " $1 ")
+            .replace(" NEG ", " - ")
             .split("\\s+");
     }
 
