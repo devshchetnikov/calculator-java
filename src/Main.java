@@ -143,6 +143,26 @@ public class Calculator {
             return m[0][0] * m[1][1] - m[0][1] * m[1][0];
         }
 
+        // --- NEW: Transpose ---
+        Matrix transpose() {
+            return new Matrix(new double[][]{
+                {m[0][0], m[1][0]},
+                {m[0][1], m[1][1]}
+            });
+        }
+
+        // --- NEW: Inverse ---
+        Matrix inverse() {
+            double determinant = det();
+            if (Math.abs(determinant) < 1e-12) {
+                throw new ArithmeticException("Matrix is singular and cannot be inverted");
+            }
+            return new Matrix(new double[][]{
+                {m[1][1] / determinant, -m[0][1] / determinant},
+                {-m[1][0] / determinant, m[0][0] / determinant}
+            });
+        }
+
         @Override
         public String toString() {
             return String.format("[[%.3f, %.3f], [%.3f, %.3f]]", m[0][0], m[0][1], m[1][0], m[1][1]);
@@ -162,6 +182,9 @@ public class Calculator {
     private static final String CMD_LOGR = "/logr"; 
     private static final String CMD_DEL = "/del";
     private static final String CMD_VARS = "/vars";
+    // --- NEW: Matrix commands ---
+    private static final String CMD_TRANSPOSE = "/transpose";
+    private static final String CMD_INVERSE = "/inverse";
 
     private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma");
 
@@ -183,6 +206,8 @@ public class Calculator {
                 System.out.println("Enter expressions: 2+2*2, 1/2+3/4, sin(pi/2)");
                 System.out.println("Matrix: [[1,2],[3,4]] * [[0,1],[1,0]], Functions: exp, ln, abs");
                 System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <name|N>, /vars");
+                // --- NEW: Help for matrix commands ---
+                System.out.println("Matrix commands: /transpose <name>, /inverse <name>");
                 System.out.println("Variables: x = 5, y = ans * 2");
                 continue;
             }
@@ -256,6 +281,37 @@ public class Calculator {
                 variables.clear();
                 lastResult = null;
                 System.out.println("Calculator state reset.");
+            }
+            // --- NEW: Command implementations ---
+            case CMD_TRANSPOSE -> {
+                if (arg == null) {
+                    System.err.println("! Usage: /transpose <variable_name>");
+                    return;
+                }
+                Object val = variables.get(arg);
+                if (!(val instanceof Matrix m)) {
+                    System.err.println("! Variable '" + arg + "' is not a matrix");
+                    return;
+                }
+                variables.put(arg, m.transpose());
+                System.out.println("Matrix '" + arg + "' transposed.");
+            }
+            case CMD_INVERSE -> {
+                if (arg == null) {
+                    System.err.println("! Usage: /inverse <variable_name>");
+                    return;
+                }
+                Object val = variables.get(arg);
+                if (!(val instanceof Matrix m)) {
+                    System.err.println("! Variable '" + arg + "' is not a matrix");
+                    return;
+                }
+                try {
+                    variables.put(arg, m.inverse());
+                    System.out.println("Matrix '" + arg + "' inverted.");
+                } catch (ArithmeticException ex) {
+                    System.err.println("! Error: " + ex.getMessage());
+                }
             }
             default -> System.err.println("! Unknown command: " + cmd);
         }
