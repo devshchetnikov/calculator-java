@@ -94,78 +94,222 @@ public class Calculator {
         }
     }
 
-    // --- Matrix (2x2) ---
+    // --- Matrix (NxM) ---
     private static class Matrix {
         private final double[][] m;
+        private final int rows;
+        private final int cols;
 
         Matrix(double[][] data) {
-            if (data.length != 2 || data[0].length != 2 || data[1].length != 2) {
-                throw new IllegalArgumentException("Only 2x2 matrices are supported");
+            if (data.length == 0 || data[0].length == 0) {
+                throw new IllegalArgumentException("Matrix dimensions cannot be zero");
+            }
+            this.rows = data.length;
+            this.cols = data[0].length;
+            for (double[] row : data) {
+                if (row.length != this.cols) {
+                    throw new IllegalArgumentException("All rows must have the same number of columns");
+                }
             }
             this.m = data;
         }
 
+        int getRows() { return rows; }
+        int getCols() { return cols; }
+
+        double[] getRow(int index) {
+            if (index < 0 || index >= rows) throw new IndexOutOfBoundsException();
+            return m[index].clone();
+        }
+
+        double[] getCol(int index) {
+            if (index < 0 || index >= cols) throw new IndexOutOfBoundsException();
+            double[] col = new double[rows];
+            for (int i = 0; i < rows; i++) {
+                col[i] = m[i][index];
+            }
+            return col;
+        }
+
         Matrix add(Matrix o) {
-            return new Matrix(new double[][]{
-                {m[0][0] + o.m[0][0], m[0][1] + o.m[0][1]},
-                {m[1][0] + o.m[1][0], m[1][1] + o.m[1][1]}
-            });
+            if (this.rows != o.rows || this.cols != o.cols) {
+                throw new IllegalArgumentException("Matrix dimensions must match for addition");
+            }
+            double[][] res = new double[rows][cols];
+            for (int i = 0; i < rows; i++) {
+                for (int j = 0; j < cols; j++) {
+                    checkSumOverflow(m[i][j], o.m[i][j]);
+                    res[i][j] = m[i][j] + o.m[i][j];
+                }
+            }
+            return new Matrix(res);
         }
 
         Matrix sub(Matrix o) {
-            return new Matrix(new double[][]{
-                {m[0][0] - o.m[0][0], m[0][1] - o.m[0][1]},
-                {m[1][0] - o.m[1][0], m[1][1] - o.m[1][1]}
-            });
+            if (this.rows != o.rows || this.cols != o.cols) {
+                throw new IllegalArgumentException("Matrix dimensions must match for subtraction");
+            }
+            double[][] res = new double[rows][cols];
+            for (int i = 0; i < rows; i++) {
+                for (int j = 0; j < cols; j++) {
+                    checkSumOverflow(m[i][j], -o.m[i][j]);
+                    res[i][j] = m[i][j] - o.m[i][j];
+                }
+            }
+            return new Matrix(res);
         }
 
         Matrix mul(Matrix o) {
-            return new Matrix(new double[][]{
-                {
-                    m[0][0] * o.m[0][0] + m[0][1] * o.m[1][0],
-                    m[0][0] * o.m[0][1] + m[0][1] * o.m[1][1]
-                },
-                {
-                    m[1][0] * o.m[0][0] + m[1][1] * o.m[1][0],
-                    m[1][0] * o.m[0][1] + m[1][1] * o.m[1][1]
+            if (this.cols != o.rows) {
+                throw new IllegalArgumentException("A columns must match B rows for multiplication");
+            }
+            double[][] res = new double[this.rows][o.cols];
+            for (int i = 0; i < this.rows; i++) {
+                for (int j = 0; j < o.cols; j++) {
+                    double sum = 0;
+                    for (int k = 0; k < this.cols; k++) {
+                        checkMulOverflow(m[i][k], o.m[k][j]);
+                        sum += m[i][k] * o.m[k][j];
+                    }
+                    res[i][j] = sum;
                 }
-            });
+            }
+            return new Matrix(res);
         }
 
         Matrix mul(double scalar) {
-            return new Matrix(new double[][]{
-                {m[0][0] * scalar, m[0][1] * scalar},
-                {m[1][0] * scalar, m[1][1] * scalar}
-            });
+            double[][] res = new double[rows][cols];
+            for (int i = 0; i < rows; i++) {
+                for (int j = 0; j < cols; j++) {
+                    checkMulOverflow(m[i][j], scalar);
+                    res[i][j] = m[i][j] * scalar;
+                }
+            }
+            return new Matrix(res);
+        }
+
+        Matrix pow(int exponent) {
+            if (rows != cols) {
+                throw new IllegalArgumentException("Only square matrices can be raised to a power");
+            }
+            if (exponent == 0) {
+                return identity(rows);
+            }
+            if (exponent < 0) {
+                return inverse().pow(-exponent);
+            }
+            Matrix result = identity(rows);
+            Matrix base = this;
+            int e = exponent;
+            while (e > 0) {
+                if ((e & 1) == 1) {
+                    result = result.mul(base);
+                }
+                base = base.mul(base);
+                e >>= 1;
+            }
+            return result;
         }
 
         double det() {
-            return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+            if (rows != cols) {
+                throw new IllegalArgumentException("Determinant is defined only for square matrices");
+            }
+            if (rows == 1) return m[0][0];
+            if (rows == 2) return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+            
+            double detVal = 0;
+            for (int c = 0; c < cols; c++) {
+                detVal += Math.pow(-1, c) * m[0][c] * minor(0, c).det();
+            }
+            return detVal;
         }
 
-        // --- NEW: Transpose ---
         Matrix transpose() {
-            return new Matrix(new double[][]{
-                {m[0][0], m[1][0]},
-                {m[0][1], m[1][1]}
-            });
+            double[][] res = new double[cols][rows];
+            for (int i = 0; i < rows; i++) {
+                for (int j = 0; j < cols; j++) {
+                    res[j][i] = m[i][j];
+                }
+            }
+            return new Matrix(res);
         }
 
-        // --- NEW: Inverse ---
         Matrix inverse() {
+            if (rows != cols) {
+                throw new IllegalArgumentException("Only square matrices can be inverted");
+            }
             double determinant = det();
             if (Math.abs(determinant) < 1e-12) {
                 throw new ArithmeticException("Matrix is singular and cannot be inverted");
             }
-            return new Matrix(new double[][]{
-                {m[1][1] / determinant, -m[0][1] / determinant},
-                {-m[1][0] / determinant, m[0][0] / determinant}
-            });
+            if (rows == 1) {
+                return new Matrix(new double[][]{{1.0 / m[0][0]}});
+            }
+            double[][] inv = new double[rows][cols];
+            for (int i = 0; i < rows; i++) {
+                for (int j = 0; j < cols; j++) {
+                    double sign = Math.pow(-1, i + j);
+                    inv[j][i] = sign * minor(i, j).det() / determinant; // Transposed cofactors
+                }
+            }
+            return new Matrix(inv);
+        }
+
+        private Matrix minor(int skipRow, int skipCol) {
+            double[][] res = new double[rows - 1][cols - 1];
+            int r = 0;
+            for (int i = 0; i < rows; i++) {
+                if (i == skipRow) continue;
+                int c = 0;
+                for (int j = 0; j < cols; j++) {
+                    if (j == skipCol) continue;
+                    res[r][c] = m[i][j];
+                    c++;
+                }
+                r++;
+            }
+            return new Matrix(res);
+        }
+
+        private static Matrix identity(int size) {
+            double[][] id = new double[size][size];
+            for (int i = 0; i < size; i++) {
+                id[i][i] = 1.0;
+            }
+            return new Matrix(id);
+        }
+
+        private static void checkMulOverflow(double a, double b) {
+            double res = a * b;
+            if (Double.isInfinite(res)) {
+                throw new ArithmeticException("Overflow in matrix multiplication");
+            }
+        }
+
+        private static void checkSumOverflow(double a, double b) {
+            double res = a + b;
+            if (Double.isInfinite(res)) {
+                throw new ArithmeticException("Overflow in matrix addition");
+            }
         }
 
         @Override
         public String toString() {
-            return String.format("[[%.3f, %.3f], [%.3f, %.3f]]", m[0][0], m[0][1], m[1][0], m[1][1]);
+            StringBuilder sb = new StringBuilder();
+            sb.append("[\n");
+            for (int i = 0; i < rows; i++) {
+                sb.append("  [");
+                for (int j = 0; j < cols; j++) {
+                    sb.append(String.format("%.3f", m[i][j]));
+                    if (j < cols - 1) sb.append(", ");
+                }
+                sb.append("]");
+                if (i < rows - 1) sb.append(",");
+                sb.append("\n");
+            }
+            sb.append("]");
+            return sb.toString();
         }
     }
 
@@ -182,9 +326,6 @@ public class Calculator {
     private static final String CMD_LOGR = "/logr"; 
     private static final String CMD_DEL = "/del";
     private static final String CMD_VARS = "/vars";
-    // --- NEW: Matrix commands ---
-    private static final String CMD_TRANSPOSE = "/transpose";
-    private static final String CMD_INVERSE = "/inverse";
 
     private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma");
 
@@ -204,21 +345,18 @@ public class Calculator {
             if (line.equals(CMD_EXIT)) break;
             if (line.equals(CMD_HELP)) {
                 System.out.println("Enter expressions: 2+2*2, 1/2+3/4, sin(pi/2)");
-                System.out.println("Matrix: [[1,2],[3,4]] * [[0,1],[1,0]], Functions: exp, ln, abs");
+                System.out.println("Matrix: [[1,2,3],[4,5,6]] * [[0,1],[1,0],[2,3]], Functions: exp, ln, abs, det");
                 System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <name|N>, /vars");
-                // --- NEW: Help for matrix commands ---
-                System.out.println("Matrix commands: /transpose <name>, /inverse <name>");
-                System.out.println("Variables: x = 5, y = ans * 2");
+                System.out.println("Variables: x = 5, y = ans * 2, M = [[1,2],[3,4]]");
+                System.out.println("Matrix power: A ^ 2, A ^ -1 (inverse)");
                 continue;
             }
 
-            // Command handlers
             if (line.startsWith("/")) {
                 handleCommand(line);
                 continue;
             }
 
-            // Variable assignment
             if (line.contains("=")) {
                 handleAssignment(line);
                 continue;
@@ -282,37 +420,6 @@ public class Calculator {
                 lastResult = null;
                 System.out.println("Calculator state reset.");
             }
-            // --- NEW: Command implementations ---
-            case CMD_TRANSPOSE -> {
-                if (arg == null) {
-                    System.err.println("! Usage: /transpose <variable_name>");
-                    return;
-                }
-                Object val = variables.get(arg);
-                if (!(val instanceof Matrix m)) {
-                    System.err.println("! Variable '" + arg + "' is not a matrix");
-                    return;
-                }
-                variables.put(arg, m.transpose());
-                System.out.println("Matrix '" + arg + "' transposed.");
-            }
-            case CMD_INVERSE -> {
-                if (arg == null) {
-                    System.err.println("! Usage: /inverse <variable_name>");
-                    return;
-                }
-                Object val = variables.get(arg);
-                if (!(val instanceof Matrix m)) {
-                    System.err.println("! Variable '" + arg + "' is not a matrix");
-                    return;
-                }
-                try {
-                    variables.put(arg, m.inverse());
-                    System.out.println("Matrix '" + arg + "' inverted.");
-                } catch (ArithmeticException ex) {
-                    System.err.println("! Error: " + ex.getMessage());
-                }
-            }
             default -> System.err.println("! Unknown command: " + cmd);
         }
     }
@@ -337,10 +444,6 @@ public class Calculator {
 
         try {
             Object value = evaluate(expr);
-            if (value instanceof Matrix || value instanceof Complex) {
-                System.err.println("! Cannot assign complex or matrix types to variables yet");
-                return;
-            }
             variables.put(name, value);
             logResult(line, value);
         } catch (ArithmeticException | IllegalArgumentException ex) {
@@ -459,22 +562,21 @@ public class Calculator {
             .substring(input.indexOf('[')+1, input.lastIndexOf(']'))
             .replaceAll("\\s+", "");
         var rows = inner.split("],\\[");
-        if (rows.length != 2) throw new IllegalArgumentException("Invalid matrix size");
+        double[][] data = new double[rows.length][];
         
-        double[][] data = new double[2][2];
-        int i = 0;
-        for (var row : rows) {
-            var cells = row.split(",");
-            if (cells.length != 2) throw new IllegalArgumentException("Invalid matrix size");
-            data[i++] = Arrays.stream(cells)
+        for (int i = 0; i < rows.length; i++) {
+            var cells = rows[i].replaceAll("[\\[\\]]", "").split(",");
+            data[i] = Arrays.stream(cells)
                 .mapToDouble(Double::parseDouble)
                 .toArray();
+            if (i > 0 && data[i].length != data[0].length) {
+                throw new IllegalArgumentException("Invalid matrix: inconsistent column count");
+            }
         }
         return new Matrix(data);
     }
 
     private String[] tokenize(String input) {
-        // Фикс для отрицательных дробей: защищаем минус, стоящий сразу после ( или в начале строки
         String protectedInput = input.trim()
             .replaceAll("(?<=^)-", "NEG")
             .replaceAll("(?<=[\\(\\+\\-*/^])-(?=\\d)", "NEG");
@@ -571,6 +673,13 @@ public class Calculator {
                 case "*" -> ma.mul(rn.doubleValue());
                 default -> throw new IllegalArgumentException("Matrix scalar operation not supported: " + op);
             };
+        }
+
+        if (left instanceof Matrix ma && op.equals("^")) {
+            if (!(right instanceof Integer)) {
+                throw new IllegalArgumentException("Matrix exponent must be an integer");
+            }
+            return ma.pow((int) right);
         }
 
         if ((left instanceof Fraction fa && right instanceof Fraction fb) ||
