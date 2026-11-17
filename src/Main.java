@@ -94,6 +94,88 @@ public class Calculator {
         }
     }
 
+    // --- Vector ---
+    private static class Vector {
+        private final double[] v;
+        private final int dim;
+
+        Vector(double[] data) {
+            if (data.length == 0) {
+                throw new IllegalArgumentException("Vector dimension cannot be zero");
+            }
+            this.dim = data.length;
+            this.v = data.clone();
+        }
+
+        int getDim() { return dim; }
+
+        Vector add(Vector o) {
+            if (this.dim != o.dim) throw new IllegalArgumentException("Vector dimensions must match");
+            double[] res = new double[dim];
+            for (int i = 0; i < dim; i++) {
+                res[i] = this.v[i] + o.v[i];
+            }
+            return new Vector(res);
+        }
+
+        Vector sub(Vector o) {
+            if (this.dim != o.dim) throw new IllegalArgumentException("Vector dimensions must match");
+            double[] res = new double[dim];
+            for (int i = 0; i < dim; i++) {
+                res[i] = this.v[i] - o.v[i];
+            }
+            return new Vector(res);
+        }
+
+        Vector mul(double scalar) {
+            double[] res = new double[dim];
+            for (int i = 0; i < dim; i++) {
+                res[i] = this.v[i] * scalar;
+            }
+            return new Vector(res);
+        }
+
+        double dot(Vector o) {
+            if (this.dim != o.dim) throw new IllegalArgumentException("Vector dimensions must match");
+            double sum = 0;
+            for (int i = 0; i < dim; i++) {
+                sum += this.v[i] * o.v[i];
+            }
+            return sum;
+        }
+
+        Vector cross(Vector o) {
+            if (this.dim != 3 || o.dim != 3) {
+                throw new IllegalArgumentException("Cross product is defined only for 3D vectors");
+            }
+            return new Vector(new double[]{
+                this.v[1] * o.v[2] - this.v[2] * o.v[1],
+                this.v[2] * o.v[0] - this.v[0] * o.v[2],
+                this.v[0] * o.v[1] - this.v[1] * o.v[0]
+            });
+        }
+
+        double norm() {
+            double sum = 0;
+            for (double val : v) {
+                sum += val * val;
+            }
+            return Math.sqrt(sum);
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("[");
+            for (int i = 0; i < dim; i++) {
+                sb.append(formatDouble(v[i]));
+                if (i < dim - 1) sb.append(", ");
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+    }
+
     // --- Matrix (NxM) ---
     private static class Matrix {
         private final double[][] m;
@@ -346,8 +428,9 @@ public class Calculator {
             if (line.equals(CMD_HELP)) {
                 System.out.println("Enter expressions: 2+2*2, 1/2+3/4, sin(pi/2)");
                 System.out.println("Matrix: [[1,2,3],[4,5,6]] * [[0,1],[1,0],[2,3]], Functions: exp, ln, abs, det");
+                System.out.println("Vector: [1,2,3] + [4,5,6], [1,2,3] x [4,5,6] (cross), |v| (norm)");
                 System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <name|N>, /vars");
-                System.out.println("Variables: x = 5, y = ans * 2, M = [[1,2],[3,4]]");
+                System.out.println("Variables: x = 5, y = ans * 2, M = [[1,2],[3,4]], V = [1,2,3]");
                 System.out.println("Matrix power: A ^ 2, A ^ -1 (inverse)");
                 continue;
             }
@@ -469,6 +552,10 @@ public class Calculator {
             System.out.println("=> " + m);
             commandLog.add(expr + " = " + m);
             lastResult = null;
+        } else if (value instanceof Vector v) {
+            System.out.println("=> " + v);
+            commandLog.add(expr + " = " + v);
+            lastResult = null;
         } else if (value instanceof String s) {
             System.out.println("=> " + s);
             commandLog.add(expr + " = " + s);
@@ -505,6 +592,9 @@ public class Calculator {
         } else if (arg instanceof Matrix m) {
             if ("det".equals(func)) return m.det();
             throw new IllegalArgumentException("Function not supported for matrices");
+        } else if (arg instanceof Vector v) {
+            if ("abs".equals(func) || "norm".equals(func)) return v.norm();
+            throw new IllegalArgumentException("Function not supported for vectors");
         } else {
             throw new IllegalArgumentException("Unsupported type for function");
         }
@@ -533,8 +623,9 @@ public class Calculator {
                 if (name.matches("-?\\d+/\\d+")) yield Fraction.of(Long.parseLong(name.split("/")[0]), Long.parseLong(name.split("/")[1]));
                 if (name.matches("-?\\d+(?:\\.\\d+)?")) yield Double.parseDouble(name);
                 if (name.contains("i") && !name.startsWith("[[")) yield parseComplex(name);
-                if (variables.containsKey(name)) yield variables.get(name);
                 if (name.startsWith("[[")) yield parseMatrix(name);
+                if (name.startsWith("[")) yield parseVector(name);
+                if (variables.containsKey(name)) yield variables.get(name);
                 yield name;
             }
         };
@@ -574,6 +665,19 @@ public class Calculator {
             }
         }
         return new Matrix(data);
+    }
+
+    private Vector parseVector(String input) {
+        var inner = input.trim()
+            .substring(input.indexOf('[')+1, input.lastIndexOf(']'))
+            .replaceAll("\\s+", "");
+        if (inner.isEmpty()) throw new IllegalArgumentException("Vector cannot be empty");
+        var cells = inner.split(",");
+        double[] data = new double[cells.length];
+        for (int i = 0; i < cells.length; i++) {
+            data[i] = Double.parseDouble(cells[i]);
+        }
+        return new Vector(data);
     }
 
     private String[] tokenize(String input) {
@@ -659,6 +763,34 @@ public class Calculator {
     }
 
     private Object applyOp(Object left, Object right, String op) {
+        // Vector operations
+        if (left instanceof Vector va && right instanceof Vector vb) {
+            return switch (op) {
+                case "+" -> va.add(vb);
+                case "-" -> va.sub(vb);
+                case "*" -> va.dot(vb);
+                case "x" -> va.cross(vb);
+                default -> throw new IllegalArgumentException("Vector operation not supported: " + op);
+            };
+        }
+
+        // Scalar multiplication for Vector
+        if (left instanceof Vector va && right instanceof Number rn) {
+            if ("*".equals(op)) {
+                return va.mul(rn.doubleValue());
+            }
+            if ("/".equals(op)) {
+                if (rn.doubleValue() == 0) throw new ArithmeticException("Division by zero");
+                return va.mul(1.0 / rn.doubleValue());
+            }
+        }
+        if (left instanceof Number ln && right instanceof Vector vb) {
+            if ("*".equals(op)) {
+                return vb.mul(ln.doubleValue());
+            }
+        }
+
+        // Matrix operations
         if (left instanceof Matrix ma && right instanceof Matrix mb) {
             return switch (op) {
                 case "+" -> ma.add(mb);
@@ -682,6 +814,7 @@ public class Calculator {
             return ma.pow((int) right);
         }
 
+        // Fraction and Number operations
         if ((left instanceof Fraction fa && right instanceof Fraction fb) ||
             (left instanceof Number na && right instanceof Number nb)) {
             var la = (Number) left;
@@ -697,6 +830,7 @@ public class Calculator {
             };
         }
 
+        // Complex operations
         if (left instanceof Complex ca && right instanceof Complex cb) {
             return switch (op) {
                 case "+" -> ca.add(cb);
