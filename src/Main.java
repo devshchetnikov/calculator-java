@@ -163,6 +163,16 @@ public class Calculator {
             return Math.sqrt(sum);
         }
 
+        // --- NEW: Vector projection ---
+        Vector projectOnto(Vector o) {
+            double denom = o.dot(o);
+            if (Math.abs(denom) < 1e-12) {
+                throw new ArithmeticException("Cannot project onto a zero vector");
+            }
+            double scale = this.dot(o) / denom;
+            return o.mul(scale);
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -307,6 +317,19 @@ public class Calculator {
             return detVal;
         }
 
+        // --- NEW: Matrix trace ---
+        double trace() {
+            if (rows != cols) {
+                throw new IllegalArgumentException("Trace is defined only for square matrices");
+            }
+            double sum = 0;
+            for (int i = 0; i < rows; i++) {
+                checkSumOverflow(sum, m[i][i]);
+                sum += m[i][i];
+            }
+            return sum;
+        }
+
         Matrix transpose() {
             double[][] res = new double[cols][rows];
             for (int i = 0; i < rows; i++) {
@@ -408,6 +431,8 @@ public class Calculator {
     private static final String CMD_LOGR = "/logr"; 
     private static final String CMD_DEL = "/del";
     private static final String CMD_VARS = "/vars";
+    // --- NEW: Command for trace ---
+    private static final String CMD_TRACE = "/tr";
 
     private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma");
 
@@ -427,9 +452,9 @@ public class Calculator {
             if (line.equals(CMD_EXIT)) break;
             if (line.equals(CMD_HELP)) {
                 System.out.println("Enter expressions: 2+2*2, 1/2+3/4, sin(pi/2)");
-                System.out.println("Matrix: [[1,2,3],[4,5,6]] * [[0,1],[1,0],[2,3]], Functions: exp, ln, abs, det");
-                System.out.println("Vector: [1,2,3] + [4,5,6], [1,2,3] x [4,5,6] (cross), |v| (norm)");
-                System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <name|N>, /vars");
+                System.out.println("Matrix: [[1,2,3],[4,5,6]] * [[0,1],[1,0],[2,3]], Functions: exp, ln, abs, det, tr");
+                System.out.println("Vector: [1,2,3] + [4,5,6], [1,2,3] x [4,5,6] (cross), |v| (norm), v1 proj v2");
+                System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <name|N>, /vars, /tr <matrix>");
                 System.out.println("Variables: x = 5, y = ans * 2, M = [[1,2],[3,4]], V = [1,2,3]");
                 System.out.println("Matrix power: A ^ 2, A ^ -1 (inverse)");
                 continue;
@@ -502,6 +527,22 @@ public class Calculator {
                 variables.clear();
                 lastResult = null;
                 System.out.println("Calculator state reset.");
+            }
+            // --- NEW: Handle trace command ---
+            case CMD_TRACE -> {
+                if (arg == null) {
+                    System.err.println("! Usage: /tr <matrix_variable>");
+                    return;
+                }
+                Object obj = fetch(arg);
+                if (obj instanceof Matrix m) {
+                    double t = m.trace();
+                    System.out.println("=> " + formatDouble(t));
+                    commandLog.add(line + " = " + formatDouble(t));
+                    lastResult = t;
+                } else {
+                    System.err.println("! Argument for /tr must be a square matrix");
+                }
             }
             default -> System.err.println("! Unknown command: " + cmd);
         }
@@ -577,7 +618,7 @@ public class Calculator {
 
     private boolean isFunction(String token) {
         return switch (token) {
-            case "sin", "cos", "tan", "ln", "log", "sqrt", "abs", "exp", "det" -> true;
+            case "sin", "cos", "tan", "ln", "log", "sqrt", "abs", "exp", "det", "tr" -> true;
             default -> false;
         };
     }
@@ -591,6 +632,8 @@ public class Calculator {
             throw new IllegalArgumentException("Function not supported for complex numbers");
         } else if (arg instanceof Matrix m) {
             if ("det".equals(func)) return m.det();
+            // --- NEW: Function for trace ---
+            if ("tr".equals(func)) return m.trace();
             throw new IllegalArgumentException("Function not supported for matrices");
         } else if (arg instanceof Vector v) {
             if ("abs".equals(func) || "norm".equals(func)) return v.norm();
@@ -696,6 +739,8 @@ public class Calculator {
             case "^" -> 4;
             case "*", "/" -> 3;
             case "+", "-" -> 2;
+            // --- NEW: Precedence for projection operator ---
+            case "proj" -> 1;
             default -> 0;
         };
     }
@@ -724,7 +769,7 @@ public class Calculator {
                     output.addLast(ops.pop()); // Функция после ")"
                 }
             } else if ("+".equals(token) || "-".equals(token) ||
-                       "*".equals(token) || "/".equals(token) || "^".equals(token)) {
+                       "*".equals(token) || "/".equals(token) || "^".equals(token) || "proj".equals(token)) {
                 while (!ops.isEmpty() &&
                        !"(" .equals(ops.peek()) &&
                         precedence(ops.peek()) >= precedence(token)) {
@@ -749,7 +794,7 @@ public class Calculator {
                 var arg = stack.pop();
                 stack.push(applyFunc(token, arg));
             } else if ("+".equals(token) || "-".equals(token) ||
-                       "*".equals(token) || "/".equals(token) || "^".equals(token)) {
+                       "*".equals(token) || "/".equals(token) || "^".equals(token) || "proj".equals(token)) {
                 var right = stack.pop();
                 var left = stack.pop();
                 stack.push(applyOp(left, right, token));
@@ -770,6 +815,8 @@ public class Calculator {
                 case "-" -> va.sub(vb);
                 case "*" -> va.dot(vb);
                 case "x" -> va.cross(vb);
+                // --- NEW: Vector projection operator ---
+                case "proj" -> va.projectOnto(vb);
                 default -> throw new IllegalArgumentException("Vector operation not supported: " + op);
             };
         }
