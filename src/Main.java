@@ -287,6 +287,7 @@ public class Calculator {
             if (exponent == 0) {
                 return identity(rows);
             }
+            // --- NEW: Support for negative power (inverse) ---
             if (exponent < 0) {
                 return inverse().pow(-exponent);
             }
