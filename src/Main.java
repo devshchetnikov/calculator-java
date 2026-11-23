@@ -1,13 +1,14 @@
 import java.util.*;
 
 public class Calculator {
+
     // --- Fraction ---
-    private static class Fraction {
+    private static class Fraction extends Number {
         private final long num;
         private final long denom;
 
         Fraction(long num, long denom) {
-            if (denom == 0) throw new IllegalArgumentException("Division by zero");
+            if (denom == 0) throw new ArithmeticException("Division by zero");
             if (denom < 0) { num = -num; denom = -denom; }
             long g = gcd(Math.abs(num), denom);
             this.num = num / g;
@@ -15,22 +16,29 @@ public class Calculator {
         }
 
         private static Fraction of(long num, long denom) {
-            if (denom == 0) throw new IllegalArgumentException("Division by zero");
-            if (denom < 0) { num = -num; denom = -denom; }
-            long g = gcd(Math.abs(num), denom);
-            long n = num / g;
-            long d = denom / g;
-            // Проверка переполнения long после сокращения
-            if (n / g * g != num || d / g * g != denom) {
-                throw new ArithmeticException("Long overflow in fraction arithmetic");
-            }
-            return new Fraction(n, d);
+            return new Fraction(num, denom);
         }
 
-        Fraction add(Fraction o) { return of(num * o.denom + o.num * denom, denom * o.denom); }
-        Fraction sub(Fraction o) { return of(num * o.denom - o.num * denom, denom * o.denom); }
-        Fraction mul(Fraction o) { return of(num * o.num, denom * o.denom); }
-        Fraction div(Fraction o) { return of(num * o.denom, denom * o.num); }
+        Fraction add(Fraction o) {
+            return of(Math.addExact(Math.multiplyExact(num, o.denom), Math.multiplyExact(o.num, denom)),
+                      Math.multiplyExact(denom, o.denom));
+        }
+        Fraction sub(Fraction o) {
+            return of(Math.subtractExact(Math.multiplyExact(num, o.denom), Math.multiplyExact(o.num, denom)),
+                      Math.multiplyExact(denom, o.denom));
+        }
+        Fraction mul(Fraction o) {
+            return of(Math.multiplyExact(num, o.num), Math.multiplyExact(denom, o.denom));
+        }
+        Fraction div(Fraction o) {
+            if (o.num == 0) throw new ArithmeticException("Division by zero");
+            return of(Math.multiplyExact(num, o.denom), Math.multiplyExact(denom, o.num));
+        }
+
+        @Override public int intValue() { return (int) toDouble(); }
+        @Override public long longValue() { return (long) toDouble(); }
+        @Override public float floatValue() { return (float) toDouble(); }
+        @Override public double doubleValue() { return toDouble(); }
 
         double toDouble() { return (double) num / (double) denom; }
 
@@ -113,35 +121,27 @@ public class Calculator {
         Vector add(Vector o) {
             if (this.dim != o.dim) throw new IllegalArgumentException("Vector dimensions must match");
             double[] res = new double[dim];
-            for (int i = 0; i < dim; i++) {
-                res[i] = this.v[i] + o.v[i];
-            }
+            for (int i = 0; i < dim; i++) res[i] = this.v[i] + o.v[i];
             return new Vector(res);
         }
 
         Vector sub(Vector o) {
             if (this.dim != o.dim) throw new IllegalArgumentException("Vector dimensions must match");
             double[] res = new double[dim];
-            for (int i = 0; i < dim; i++) {
-                res[i] = this.v[i] - o.v[i];
-            }
+            for (int i = 0; i < dim; i++) res[i] = this.v[i] - o.v[i];
             return new Vector(res);
         }
 
         Vector mul(double scalar) {
             double[] res = new double[dim];
-            for (int i = 0; i < dim; i++) {
-                res[i] = this.v[i] * scalar;
-            }
+            for (int i = 0; i < dim; i++) res[i] = this.v[i] * scalar;
             return new Vector(res);
         }
 
         double dot(Vector o) {
             if (this.dim != o.dim) throw new IllegalArgumentException("Vector dimensions must match");
             double sum = 0;
-            for (int i = 0; i < dim; i++) {
-                sum += this.v[i] * o.v[i];
-            }
+            for (int i = 0; i < dim; i++) sum += this.v[i] * o.v[i];
             return sum;
         }
 
@@ -158,13 +158,10 @@ public class Calculator {
 
         double norm() {
             double sum = 0;
-            for (double val : v) {
-                sum += val * val;
-            }
+            for (double val : v) sum += val * val;
             return Math.sqrt(sum);
         }
 
-        // --- NEW: Vector projection ---
         Vector projectOnto(Vector o) {
             double denom = o.dot(o);
             if (Math.abs(denom) < 1e-12) {
@@ -218,9 +215,7 @@ public class Calculator {
         double[] getCol(int index) {
             if (index < 0 || index >= cols) throw new IndexOutOfBoundsException();
             double[] col = new double[rows];
-            for (int i = 0; i < rows; i++) {
-                col[i] = m[i][index];
-            }
+            for (int i = 0; i < rows; i++) col[i] = m[i][index];
             return col;
         }
 
@@ -229,12 +224,11 @@ public class Calculator {
                 throw new IllegalArgumentException("Matrix dimensions must match for addition");
             }
             double[][] res = new double[rows][cols];
-            for (int i = 0; i < rows; i++) {
+            for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++) {
                     checkSumOverflow(m[i][j], o.m[i][j]);
                     res[i][j] = m[i][j] + o.m[i][j];
                 }
-            }
             return new Matrix(res);
         }
 
@@ -243,12 +237,11 @@ public class Calculator {
                 throw new IllegalArgumentException("Matrix dimensions must match for subtraction");
             }
             double[][] res = new double[rows][cols];
-            for (int i = 0; i < rows; i++) {
+            for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++) {
                     checkSumOverflow(m[i][j], -o.m[i][j]);
                     res[i][j] = m[i][j] - o.m[i][j];
                 }
-            }
             return new Matrix(res);
         }
 
@@ -257,7 +250,7 @@ public class Calculator {
                 throw new IllegalArgumentException("A columns must match B rows for multiplication");
             }
             double[][] res = new double[this.rows][o.cols];
-            for (int i = 0; i < this.rows; i++) {
+            for (int i = 0; i < this.rows; i++)
                 for (int j = 0; j < o.cols; j++) {
                     double sum = 0;
                     for (int k = 0; k < this.cols; k++) {
@@ -266,18 +259,16 @@ public class Calculator {
                     }
                     res[i][j] = sum;
                 }
-            }
             return new Matrix(res);
         }
 
         Matrix mul(double scalar) {
             double[][] res = new double[rows][cols];
-            for (int i = 0; i < rows; i++) {
+            for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++) {
                     checkMulOverflow(m[i][j], scalar);
                     res[i][j] = m[i][j] * scalar;
                 }
-            }
             return new Matrix(res);
         }
 
@@ -285,20 +276,13 @@ public class Calculator {
             if (rows != cols) {
                 throw new IllegalArgumentException("Only square matrices can be raised to a power");
             }
-            if (exponent == 0) {
-                return identity(rows);
-            }
-            // --- NEW: Support for negative power (inverse) ---
-            if (exponent < 0) {
-                return inverse().pow(-exponent);
-            }
+            if (exponent == 0) return identity(rows);
+            if (exponent < 0) return inverse().pow(-exponent);
             Matrix result = identity(rows);
             Matrix base = this;
             int e = exponent;
             while (e > 0) {
-                if ((e & 1) == 1) {
-                    result = result.mul(base);
-                }
+                if ((e & 1) == 1) result = result.mul(base);
                 base = base.mul(base);
                 e >>= 1;
             }
@@ -311,7 +295,6 @@ public class Calculator {
             }
             if (rows == 1) return m[0][0];
             if (rows == 2) return m[0][0] * m[1][1] - m[0][1] * m[1][0];
-            
             double detVal = 0;
             for (int c = 0; c < cols; c++) {
                 detVal += Math.pow(-1, c) * m[0][c] * minor(0, c).det();
@@ -319,7 +302,6 @@ public class Calculator {
             return detVal;
         }
 
-        // --- NEW: Matrix trace ---
         double trace() {
             if (rows != cols) {
                 throw new IllegalArgumentException("Trace is defined only for square matrices");
@@ -334,11 +316,9 @@ public class Calculator {
 
         Matrix transpose() {
             double[][] res = new double[cols][rows];
-            for (int i = 0; i < rows; i++) {
-                for (int j = 0; j < cols; j++) {
+            for (int i = 0; i < rows; i++)
+                for (int j = 0; j < cols; j++)
                     res[j][i] = m[i][j];
-                }
-            }
             return new Matrix(res);
         }
 
@@ -354,12 +334,11 @@ public class Calculator {
                 return new Matrix(new double[][]{{1.0 / m[0][0]}});
             }
             double[][] inv = new double[rows][cols];
-            for (int i = 0; i < rows; i++) {
+            for (int i = 0; i < rows; i++)
                 for (int j = 0; j < cols; j++) {
                     double sign = Math.pow(-1, i + j);
-                    inv[j][i] = sign * minor(i, j).det() / determinant; // Transposed cofactors
+                    inv[j][i] = sign * minor(i, j).det() / determinant;
                 }
-            }
             return new Matrix(inv);
         }
 
@@ -381,24 +360,16 @@ public class Calculator {
 
         private static Matrix identity(int size) {
             double[][] id = new double[size][size];
-            for (int i = 0; i < size; i++) {
-                id[i][i] = 1.0;
-            }
+            for (int i = 0; i < size; i++) id[i][i] = 1.0;
             return new Matrix(id);
         }
 
         private static void checkMulOverflow(double a, double b) {
-            double res = a * b;
-            if (Double.isInfinite(res)) {
-                throw new ArithmeticException("Overflow in matrix multiplication");
-            }
+            if (Double.isInfinite(a * b)) throw new ArithmeticException("Overflow in matrix multiplication");
         }
 
         private static void checkSumOverflow(double a, double b) {
-            double res = a + b;
-            if (Double.isInfinite(res)) {
-                throw new ArithmeticException("Overflow in matrix addition");
-            }
+            if (Double.isInfinite(a + b)) throw new ArithmeticException("Overflow in matrix addition");
         }
 
         @Override
@@ -430,13 +401,12 @@ public class Calculator {
     private static final String CMD_HELP = "/help";
     private static final String CMD_RESET = "/reset";
     private static final String CMD_LOG = "/log";
-    private static final String CMD_LOGR = "/logr"; 
+    private static final String CMD_LOGR = "/logr";
     private static final String CMD_DEL = "/del";
     private static final String CMD_VARS = "/vars";
-    // --- NEW: Command for trace ---
     private static final String CMD_TRACE = "/tr";
 
-    private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma");
+    private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma", "x");
 
     public static void main(String[] args) {
         new Calculator().repl();
@@ -453,11 +423,11 @@ public class Calculator {
             if (line.isEmpty()) continue;
             if (line.equals(CMD_EXIT)) break;
             if (line.equals(CMD_HELP)) {
-                System.out.println("Enter expressions: 2+2*2, 1/2+3/4, sin(pi/2)");
-                System.out.println("Matrix: [[1,2,3],[4,5,6]] * [[0,1],[1,0],[2,3]], Functions: exp, ln, abs, det, tr");
+                System.out.println("Enter expressions: 2+2*2, 1/2+3/4, 10 % 3, sin(pi/2)");
+                System.out.println("Matrix: [[1,2,3],[4,5,6]] * [[0,1],[1,0],[2,3]], Functions: exp, ln, abs, det, tr, transpose");
                 System.out.println("Vector: [1,2,3] + [4,5,6], [1,2,3] x [4,5,6] (cross), |v| (norm), v1 proj v2");
                 System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <name|N>, /vars, /tr <matrix>");
-                System.out.println("Variables: x = 5, y = ans * 2, M = [[1,2],[3,4]], V = [1,2,3]");
+                System.out.println("Variables: x = 5, y = ans * 2, M = [[1,2],[3,4]], V = [1,2,3]  ('x' is reserved for cross product)");
                 System.out.println("Matrix power: A ^ 2, A ^ -1 (inverse)");
                 continue;
             }
@@ -530,7 +500,6 @@ public class Calculator {
                 lastResult = null;
                 System.out.println("Calculator state reset.");
             }
-            // --- NEW: Handle trace command ---
             case CMD_TRACE -> {
                 if (arg == null) {
                     System.err.println("! Usage: /tr <matrix_variable>");
@@ -577,7 +546,7 @@ public class Calculator {
         }
     }
 
-    private void logResult(String expr, Object value) throws ArithmeticException {
+    private void logResult(String expr, Object value) {
         if (value instanceof Double d) {
             checkOverflow(d);
             System.out.println("=> " + formatDouble(d));
@@ -606,7 +575,7 @@ public class Calculator {
         }
     }
 
-    private void checkOverflow(Double d) throws ArithmeticException {
+    private void checkOverflow(Double d) {
         if (d == null || !Double.isFinite(d)) {
             throw new ArithmeticException("Overflow or division by zero");
         }
@@ -614,13 +583,12 @@ public class Calculator {
 
     private String formatValue(Object value) {
         if (value instanceof Double d) return formatDouble(d);
-        if (value instanceof Fraction f) return f.toString();
         return value.toString();
     }
 
     private boolean isFunction(String token) {
         return switch (token) {
-            case "sin", "cos", "tan", "ln", "log", "sqrt", "abs", "exp", "det", "tr" -> true;
+            case "sin", "cos", "tan", "ln", "log", "sqrt", "abs", "exp", "det", "tr", "transpose" -> true;
             default -> false;
         };
     }
@@ -634,8 +602,8 @@ public class Calculator {
             throw new IllegalArgumentException("Function not supported for complex numbers");
         } else if (arg instanceof Matrix m) {
             if ("det".equals(func)) return m.det();
-            // --- NEW: Function for trace ---
             if ("tr".equals(func)) return m.trace();
+            if ("transpose".equals(func)) return m.transpose();
             throw new IllegalArgumentException("Function not supported for matrices");
         } else if (arg instanceof Vector v) {
             if ("abs".equals(func) || "norm".equals(func)) return v.norm();
@@ -662,12 +630,13 @@ public class Calculator {
             case "ans" -> lastResult != null ? lastResult : 0.0;
             case "pi" -> Math.PI;
             case "e" -> Math.E;
-            case "phi" -> (Math.sqrt(5) + 1) / 2; // Золотое сечение
-            case "gamma" -> 0.577_215_664_901_532_860_606_512_09; // Эйлера–Маскерони
+            case "phi" -> (Math.sqrt(5) + 1) / 2;
+            case "gamma" -> 0.577_215_664_901_532_9;
             default -> {
-                if (name.matches("-?\\d+/\\d+")) yield Fraction.of(Long.parseLong(name.split("/")[0]), Long.parseLong(name.split("/")[1]));
+                if (name.matches("-?\\d+/\\d+"))
+                    yield Fraction.of(Long.parseLong(name.split("/")[0]), Long.parseLong(name.split("/")[1]));
                 if (name.matches("-?\\d+(?:\\.\\d+)?")) yield Double.parseDouble(name);
-                if (name.contains("i") && !name.startsWith("[[")) yield parseComplex(name);
+                if (name.contains("i") && !name.startsWith("[")) yield parseComplex(name);
                 if (name.startsWith("[[")) yield parseMatrix(name);
                 if (name.startsWith("[")) yield parseVector(name);
                 if (variables.containsKey(name)) yield variables.get(name);
@@ -676,8 +645,8 @@ public class Calculator {
         };
     }
 
-    private String formatDouble(Double d) {
-        return Math.abs(d - Math.round(d)) < 1e-9 ? Long.toString(Math.round(d)) : d.toString();
+    private String formatDouble(double d) {
+        return Math.abs(d - Math.round(d)) < 1e-9 ? Long.toString(Math.round(d)) : Double.toString(d);
     }
 
     private Complex parseComplex(String comp) {
@@ -687,7 +656,7 @@ public class Calculator {
                 realPart += Double.parseDouble(part);
                 continue;
             }
-            var n = part.substring(0, part.length()-1).replaceFirst("^([+-]?)$", "$11");
+            var n = part.substring(0, part.length() - 1).replaceFirst("^([+-]?)$", "$11");
             imagPart += Double.parseDouble(n);
         }
         return new Complex(realPart, imagPart);
@@ -695,207 +664,6 @@ public class Calculator {
 
     private Matrix parseMatrix(String input) {
         var inner = input.trim()
-            .substring(input.indexOf('[')+1, input.lastIndexOf(']'))
+            .substring(input.indexOf('[') + 1, input.lastIndexOf(']'))
             .replaceAll("\\s+", "");
-        var rows = inner.split("],\\[");
-        double[][] data = new double[rows.length][];
-        
-        for (int i = 0; i < rows.length; i++) {
-            var cells = rows[i].replaceAll("[\\[\\]]", "").split(",");
-            data[i] = Arrays.stream(cells)
-                .mapToDouble(Double::parseDouble)
-                .toArray();
-            if (i > 0 && data[i].length != data[0].length) {
-                throw new IllegalArgumentException("Invalid matrix: inconsistent column count");
-            }
-        }
-        return new Matrix(data);
-    }
-
-    private Vector parseVector(String input) {
-        var inner = input.trim()
-            .substring(input.indexOf('[')+1, input.lastIndexOf(']'))
-            .replaceAll("\\s+", "");
-        if (inner.isEmpty()) throw new IllegalArgumentException("Vector cannot be empty");
-        var cells = inner.split(",");
-        double[] data = new double[cells.length];
-        for (int i = 0; i < cells.length; i++) {
-            data[i] = Double.parseDouble(cells[i]);
-        }
-        return new Vector(data);
-    }
-
-    private String[] tokenize(String input) {
-        String protectedInput = input.trim()
-            .replaceAll("(?<=^)-", "NEG")
-            .replaceAll("(?<=[\\(\\+\\-*/^])-(?=\\d)", "NEG");
-
-        return protectedInput
-            .replaceAll("([()+\\-*/^])", " $1 ")
-            .replace(" NEG ", " - ")
-            .split("\\s+");
-    }
-
-    private int precedence(String op) {
-        return switch (op) {
-            case "^" -> 4;
-            case "*", "/" -> 3;
-            case "+", "-" -> 2;
-            // --- NEW: Precedence for projection operator ---
-            case "proj" -> 1;
-            default -> 0;
-        };
-    }
-
-    private Object evaluate(String input) {
-        var tokens = tokenize(input);
-
-        if (tokens.length == 0) throw new IllegalArgumentException("Empty expression");
-        if (tokens.length == 1) return fetch(tokens[0]);
-
-        Deque<String> output = new ArrayDeque<>();
-        Deque<String> ops = new ArrayDeque<>();
-
-        for (var token : tokens) {
-            if (isFunction(token)) {
-                ops.push(token);
-            } else if ("(".equals(token)) {
-                ops.push(token);
-            } else if (")".equals(token)) {
-                while (!ops.isEmpty() && !"(".equals(ops.peek())) {
-                    output.addLast(ops.pop());
-                }
-                if (ops.isEmpty()) throw new IllegalArgumentException("Mismatched parentheses");
-                ops.pop(); // '('
-                if (!ops.isEmpty() && isFunction(ops.peek())) {
-                    output.addLast(ops.pop()); // Функция после ")"
-                }
-            } else if ("+".equals(token) || "-".equals(token) ||
-                       "*".equals(token) || "/".equals(token) || "^".equals(token) || "proj".equals(token)) {
-                while (!ops.isEmpty() &&
-                       !"(" .equals(ops.peek()) &&
-                        precedence(ops.peek()) >= precedence(token)) {
-                    output.addLast(ops.pop());
-                }
-                ops.push(token);
-            } else {
-                output.addLast(token);
-            }
-        }
-
-        while (!ops.isEmpty()) {
-            if ("(".equals(ops.peek()) || ")".equals(ops.peek()))
-                throw new IllegalArgumentException("Mismatched parentheses");
-            output.addLast(ops.pop());
-        }
-
-        Deque<Object> stack = new ArrayDeque<>();
-
-        for (var token : output) {
-            if (isFunction(token)) {
-                var arg = stack.pop();
-                stack.push(applyFunc(token, arg));
-            } else if ("+".equals(token) || "-".equals(token) ||
-                       "*".equals(token) || "/".equals(token) || "^".equals(token) || "proj".equals(token)) {
-                var right = stack.pop();
-                var left = stack.pop();
-                stack.push(applyOp(left, right, token));
-            } else {
-                stack.push(fetch(token));
-            }
-        }
-
-        if (stack.size() != 1) throw new IllegalArgumentException("Invalid expression");
-        return stack.pop();
-    }
-
-    private Object applyOp(Object left, Object right, String op) {
-        // Vector operations
-        if (left instanceof Vector va && right instanceof Vector vb) {
-            return switch (op) {
-                case "+" -> va.add(vb);
-                case "-" -> va.sub(vb);
-                case "*" -> va.dot(vb);
-                case "x" -> va.cross(vb);
-                // --- NEW: Vector projection operator ---
-                case "proj" -> va.projectOnto(vb);
-                default -> throw new IllegalArgumentException("Vector operation not supported: " + op);
-            };
-        }
-
-        // Scalar multiplication for Vector
-        if (left instanceof Vector va && right instanceof Number rn) {
-            if ("*".equals(op)) {
-                return va.mul(rn.doubleValue());
-            }
-            if ("/".equals(op)) {
-                if (rn.doubleValue() == 0) throw new ArithmeticException("Division by zero");
-                return va.mul(1.0 / rn.doubleValue());
-            }
-        }
-        if (left instanceof Number ln && right instanceof Vector vb) {
-            if ("*".equals(op)) {
-                return vb.mul(ln.doubleValue());
-            }
-        }
-
-        // Matrix operations
-        if (left instanceof Matrix ma && right instanceof Matrix mb) {
-            return switch (op) {
-                case "+" -> ma.add(mb);
-                case "-" -> ma.sub(mb);
-                case "*" -> ma.mul(mb);
-                default -> throw new IllegalArgumentException("Matrix operation not supported: " + op);
-            };
-        }
-
-        if (left instanceof Matrix ma && right instanceof Number rn) {
-            return switch (op) {
-                case "*" -> ma.mul(rn.doubleValue());
-                default -> throw new IllegalArgumentException("Matrix scalar operation not supported: " + op);
-            };
-        }
-
-        if (left instanceof Matrix ma && op.equals("^")) {
-            if (!(right instanceof Integer)) {
-                throw new IllegalArgumentException("Matrix exponent must be an integer");
-            }
-            return ma.pow((int) right);
-        }
-
-        // Fraction and Number operations
-        if ((left instanceof Fraction fa && right instanceof Fraction fb) ||
-            (left instanceof Number na && right instanceof Number nb)) {
-            var la = (Number) left;
-            var ra = (Number) right;
-
-            return switch (op) {
-                case "+" -> la.doubleValue() + ra.doubleValue();
-                case "-" -> la.doubleValue() - ra.doubleValue();
-                case "*" -> la.doubleValue() * ra.doubleValue();
-                case "/" -> la.doubleValue() / ra.doubleValue();
-                case "^" -> Math.pow(la.doubleValue(), ra.doubleValue());
-                default -> throw new IllegalArgumentException("Operation not supported: " + op);
-            };
-        }
-
-        // Complex operations
-        if (left instanceof Complex ca && right instanceof Complex cb) {
-            return switch (op) {
-                case "+" -> ca.add(cb);
-                case "-" -> ca.sub(cb);
-                case "*" -> ca.mul(cb);
-                case "/" -> ca.div(cb);
-                case "^" -> {
-                    if (!(right instanceof Number)) throw new IllegalArgumentException("Exponent must be numeric");
-                    yield ca.pow(((Number) right).doubleValue());
-                }
-                default -> throw new IllegalArgumentException("Complex operation not supported: " + op);
-            };
-        }
-
-        throw new IllegalArgumentException(
-            "Incompatible types for operator '" + op +
-            "': " + left.getClass().getSimpleName() + ", " + right.getClass().getSimpleName());
-    }
-}
+        var rows = inner.split("],\
