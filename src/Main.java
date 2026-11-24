@@ -201,7 +201,15 @@ public class Calculator {
                     throw new IllegalArgumentException("All rows must have the same number of columns");
                 }
             }
-            this.m = data;
+            this.m = deepCopy(data);
+        }
+
+        private static double[][] deepCopy(double[][] data) {
+            double[][] copy = new double[data.length][];
+            for (int i = 0; i < data.length; i++) {
+                copy[i] = data[i].clone();
+            }
+            return copy;
         }
 
         int getRows() { return rows; }
@@ -372,6 +380,59 @@ public class Calculator {
             if (Double.isInfinite(a + b)) throw new ArithmeticException("Overflow in matrix addition");
         }
 
+        // --- NEW: Row Echelon Form (REF) ---
+        Matrix rowEchelonForm() {
+            double[][] a = deepCopy(m);
+            int lead = 0;
+            for (int r = 0; r < rows; r++) {
+                if (lead >= cols) return new Matrix(a);
+                int i = r;
+                while (Math.abs(a[i][lead]) < 1e-12) {
+                    i++;
+                    if (i == rows) {
+                        i = r;
+                        lead++;
+                        if (lead == cols) return new Matrix(a);
+                    }
+                }
+                double[] temp = a[i];
+                a[i] = a[r];
+                a[r] = temp;
+                double lv = a[r][lead];
+                for (int j = 0; j < cols; j++) a[r][j] /= lv;
+                for (int i2 = r + 1; i2 < rows; i2++) {
+                    double lv2 = a[i2][lead];
+                    for (int j = 0; j < cols; j++) {
+                        a[i2][j] -= lv2 * a[r][j];
+                    }
+                }
+                lead++;
+            }
+            return new Matrix(a);
+        }
+
+        // --- NEW: Reduced Row Echelon Form (RREF) ---
+        Matrix reducedRowEchelonForm() {
+            double[][] a = rowEchelonForm().m;
+            for (int r = rows - 1; r >= 0; r--) {
+                int leadCol = -1;
+                for (int c = 0; c < cols; c++) {
+                    if (Math.abs(a[r][c]) > 1e-12) {
+                        leadCol = c;
+                        break;
+                    }
+                }
+                if (leadCol == -1) continue;
+                for (int i2 = r - 1; i2 >= 0; i2--) {
+                    double factor = a[i2][leadCol];
+                    for (int j = 0; j < cols; j++) {
+                        a[i2][j] -= factor * a[r][j];
+                    }
+                }
+            }
+            return new Matrix(a);
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -405,6 +466,8 @@ public class Calculator {
     private static final String CMD_DEL = "/del";
     private static final String CMD_VARS = "/vars";
     private static final String CMD_TRACE = "/tr";
+    private static final String CMD_REF = "/ref";
+    private static final String CMD_RREF = "/rref";
 
     private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma", "x");
 
@@ -429,6 +492,7 @@ public class Calculator {
                 System.out.println("Commands: /exit, /help, /reset, /log, /logr, /del <name|N>, /vars, /tr <matrix>");
                 System.out.println("Variables: x = 5, y = ans * 2, M = [[1,2],[3,4]], V = [1,2,3]  ('x' is reserved for cross product)");
                 System.out.println("Matrix power: A ^ 2, A ^ -1 (inverse)");
+                System.out.println("New: /ref <matrix> (Row Echelon Form), /rref <matrix> (Reduced Row Echelon Form)");
                 continue;
             }
 
@@ -513,6 +577,38 @@ public class Calculator {
                     lastResult = t;
                 } else {
                     System.err.println("! Argument for /tr must be a square matrix");
+                }
+            }
+            // --- NEW: REF Command ---
+            case CMD_REF -> {
+                if (arg == null) {
+                    System.err.println("! Usage: /ref <matrix_variable>");
+                    return;
+                }
+                Object obj = fetch(arg);
+                if (obj instanceof Matrix m) {
+                    Matrix ref = m.rowEchelonForm();
+                    System.out.println("=> " + ref);
+                    commandLog.add(line + " = " + ref);
+                    lastResult = null;
+                } else {
+                    System.err.println("! Argument for /ref must be a matrix");
+                }
+            }
+            // --- NEW: RREF Command ---
+            case CMD_RREF -> {
+                if (arg == null) {
+                    System.err.println("! Usage: /rref <matrix_variable>");
+                    return;
+                }
+                Object obj = fetch(arg);
+                if (obj instanceof Matrix m) {
+                    Matrix rref = m.reducedRowEchelonForm();
+                    System.out.println("=> " + rref);
+                    commandLog.add(line + " = " + rref);
+                    lastResult = null;
+                } else {
+                    System.err.println("! Argument for /rref must be a matrix");
                 }
             }
             default -> System.err.println("! Unknown command: " + cmd);
@@ -663,7 +759,122 @@ public class Calculator {
     }
 
     private Matrix parseMatrix(String input) {
-        var inner = input.trim()
-            .substring(input.indexOf('[') + 1, input.lastIndexOf(']'))
-            .replaceAll("\\s+", "");
-        var rows = inner.split("],\
+        // --- FIXED: Robust parsing for matrices with spaces and newlines ---
+        String clean = input.trim();
+        if (!clean.startsWith("[[") || !clean.endsWith("]]")) {
+            throw new IllegalArgumentException("Invalid matrix format");
+        }
+        String inner = clean.substring(2, clean.length() - 2);
+        // Remove all whitespace (spaces, tabs, newlines) inside the matrix definition
+        inner = inner.replaceAll("\\s+", "");
+        
+        List<double[]> rows = new ArrayList<>();
+        String[] rawRows = inner.split("],\\[");
+        
+        for (String rawRow : rawRows) {
+            String rowContent = rawRow.replaceAll("[\\[\\]]", "");
+            if (rowContent.isEmpty()) continue;
+            String[] tokens = rowContent.split(",");
+            double[] row = new double[tokens.length];
+            for (int i = 0; i < tokens.length; i++) {
+                row[i] = Double.parseDouble(tokens[i]);
+            }
+            rows.add(row);
+        }
+        
+        if (rows.isEmpty()) {
+            throw new IllegalArgumentException("Matrix cannot be empty");
+        }
+        
+        double[][] data = new double[rows.size()][];
+        for (int i = 0; i < rows.size(); i++) {
+            data[i] = rows.get(i);
+        }
+        return new Matrix(data);
+    }
+
+    private Vector parseVector(String input) {
+        String clean = input.trim();
+        if (!clean.startsWith("[") || !clean.endsWith("]")) {
+            throw new IllegalArgumentException("Invalid vector format");
+        }
+        String inner = clean.substring(1, clean.length() - 1).replaceAll("\\s+", "");
+        if (inner.isEmpty()) throw new IllegalArgumentException("Vector cannot be empty");
+        String[] tokens = inner.split(",");
+        double[] data = new double[tokens.length];
+        for (int i = 0; i < tokens.length; i++) {
+            data[i] = Double.parseDouble(tokens[i]);
+        }
+        return new Vector(data);
+    }
+
+    private Object evaluate(String expr) {
+        // Simple shunting-yard implementation to support functions and parentheses
+        List<String> output = new ArrayList<>();
+        Deque<String> stack = new ArrayDeque<>();
+        String[] tokens = expr.replaceAll("([-+*/^(),])", " $1 ").split("\\s+");
+
+        for (String token : tokens) {
+            if (token.isEmpty()) continue;
+            if (token.matches("-?\\d+(?:\\.\\d+)?(?:/\\d+)?")) {
+                output.add(token);
+            } else if (token.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
+                if (isFunction(token)) {
+                    stack.push(token);
+                } else {
+                    output.add(token);
+                }
+            } else if (token.equals(",")) {
+                while (!stack.isEmpty() && !stack.peek().equals("(")) {
+                    output.add(stack.pop());
+                }
+            } else if (token.equals("(")) {
+                stack.push(token);
+            } else if (token.equals(")")) {
+                while (!stack.isEmpty() && !stack.peek().equals("(")) {
+                    output.add(stack.pop());
+                }
+                if (!stack.isEmpty() && stack.peek().equals("(")) stack.pop();
+                if (!stack.isEmpty() && isFunction(stack.peek())) {
+                    output.add(stack.pop());
+                }
+            } else {
+                // Operator
+                while (!stack.isEmpty() && precedence(stack.peek()) >= precedence(token) && !stack.peek().equals("(")) {
+                    output.add(stack.pop());
+                }
+                stack.push(token);
+            }
+        }
+        while (!stack.isEmpty()) output.add(stack.pop());
+
+        Deque<Object> evalStack = new ArrayDeque<>();
+        for (String token : output) {
+            if (token.matches("-?\\d+(?:\\.\\d+)?(?:/\\d+)?")) {
+                if (token.contains("/")) {
+                    String[] frac = token.split("/");
+                    evalStack.push(Fraction.of(Long.parseLong(frac[0]), Long.parseLong(frac[1])));
+                } else {
+                    evalStack.push(Double.parseDouble(token));
+                }
+            } else if (token.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
+                evalStack.push(fetch(token));
+            } else if (isFunction(token)) {
+                Object arg = evalStack.pop();
+                evalStack.push(applyFunc(token, arg));
+            } else {
+                Object b = evalStack.pop();
+                Object a = evalStack.pop();
+                evalStack.push(applyOp(a, b, token));
+            }
+        }
+        return evalStack.pop();
+    }
+
+    private Object applyOp(Object a, Object b, String op) {
+        if (op.equals("=")) throw new IllegalArgumentException("Assignment not allowed here");
+
+        if (a instanceof Matrix ma && b instanceof Matrix mb) {
+            return switch (op) {
+                case "+" -> ma.add(mb);
+                case "-"
