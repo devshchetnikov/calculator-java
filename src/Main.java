@@ -433,6 +433,65 @@ public class Calculator {
             return new Matrix(a);
         }
 
+        // --- NEW: LU Decomposition ---
+        // Returns a single matrix where L (with 1.0 on diagonal) is in the lower triangle
+        // and U is in the upper triangle.
+        Matrix luDecomposition() {
+            if (rows != cols) {
+                throw new IllegalArgumentException("LU decomposition requires a square matrix");
+            }
+            double[][] a = deepCopy(m);
+            int n = rows;
+
+            for (int k = 0; k < n; k++) {
+                // Check for zero pivot
+                if (Math.abs(a[k][k]) < 1e-12) {
+                    throw new ArithmeticException("Zero pivot encountered, matrix is singular or requires pivoting");
+                }
+                for (int i = k + 1; i < n; i++) {
+                    a[i][k] /= a[k][k];
+                    for (int j = k + 1; j < n; j++) {
+                        a[i][j] -= a[i][k] * a[k][j];
+                    }
+                }
+            }
+            return new Matrix(a);
+        }
+
+        // Solves Ly = b for y (forward substitution)
+        Vector forwardSubstitution(Vector b) {
+            if (rows != cols || b.getDim() != rows) {
+                throw new IllegalArgumentException("Invalid dimensions for forward substitution");
+            }
+            double[] y = new double[rows];
+            double[][] l = m; // L is stored in the lower part of this matrix
+            for (int i = 0; i < rows; i++) {
+                double sum = b.v[i];
+                for (int j = 0; j < i; j++) {
+                    sum -= l[i][j] * y[j];
+                }
+                y[i] = sum / l[i][i]; // l[i][i] is 1.0 in Doolittle's, but kept for generality
+            }
+            return new Vector(y);
+        }
+
+        // Solves Ux = y for x (backward substitution)
+        Vector backwardSubstitution(Vector y) {
+            if (rows != cols || y.getDim() != rows) {
+                throw new IllegalArgumentException("Invalid dimensions for backward substitution");
+            }
+            double[] x = new double[rows];
+            double[][] u = m; // U is stored in the upper part of this matrix
+            for (int i = rows - 1; i >= 0; i--) {
+                double sum = y.v[i];
+                for (int j = i + 1; j < rows; j++) {
+                    sum -= u[i][j] * x[j];
+                }
+                x[i] = sum / u[i][i];
+            }
+            return new Vector(x);
+        }
+
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
@@ -468,6 +527,7 @@ public class Calculator {
     private static final String CMD_TRACE = "/tr";
     private static final String CMD_REF = "/ref";
     private static final String CMD_RREF = "/rref";
+    private static final String CMD_SOLVE = "/solve";
 
     private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma", "x");
 
@@ -493,6 +553,7 @@ public class Calculator {
                 System.out.println("Variables: x = 5, y = ans * 2, M = [[1,2],[3,4]], V = [1,2,3]  ('x' is reserved for cross product)");
                 System.out.println("Matrix power: A ^ 2, A ^ -1 (inverse)");
                 System.out.println("New: /ref <matrix> (Row Echelon Form), /rref <matrix> (Reduced Row Echelon Form)");
+                System.out.println("New: /solve <matrix_A> <vector_b> (Solves Ax = b using LU decomposition)");
                 continue;
             }
 
@@ -579,7 +640,6 @@ public class Calculator {
                     System.err.println("! Argument for /tr must be a square matrix");
                 }
             }
-            // --- NEW: REF Command ---
             case CMD_REF -> {
                 if (arg == null) {
                     System.err.println("! Usage: /ref <matrix_variable>");
@@ -595,7 +655,6 @@ public class Calculator {
                     System.err.println("! Argument for /ref must be a matrix");
                 }
             }
-            // --- NEW: RREF Command ---
             case CMD_RREF -> {
                 if (arg == null) {
                     System.err.println("! Usage: /rref <matrix_variable>");
@@ -611,6 +670,42 @@ public class Calculator {
                     System.err.println("! Argument for /rref must be a matrix");
                 }
             }
+            // --- NEW: Solve Command ---
+            case CMD_SOLVE -> {
+                if (arg == null) {
+                    System.err.println("! Usage: /solve <matrix_A> <vector_b>");
+                    return;
+                }
+                String[] argsArr = arg.split("\\s+");
+                if (argsArr.length != 2) {
+                    System.err.println("! Usage: /solve <matrix_A> <vector_b>");
+                    return;
+                }
+                Object objA = fetch(argsArr[0]);
+                Object objB = fetch(argsArr[1]);
+                if (!(objA instanceof Matrix) || !(objB instanceof Vector)) {
+                    System.err.println("! Arguments for /solve must be a matrix and a vector");
+                    return;
+                }
+                Matrix A = (Matrix) objA;
+                Vector b = (Vector) objB;
+                if (A.getRows() != A.getCols() || A.getRows() != b.getDim()) {
+                    System.err.println("! Matrix must be square and vector dimension must match");
+                    return;
+                }
+
+                try {
+                    Matrix lu = A.luDecomposition();
+                    Vector y = lu.forwardSubstitution(b);
+                    Vector x = lu.backwardSubstitution(y);
+                    System.out.println("=> " + x);
+                    commandLog.add(line + " = " + x);
+                    lastResult = null;
+                } catch (ArithmeticException ex) {
+                    System.err.printf("! Error: %s%n", ex.getMessage());
+                }
+            }
+
             default -> System.err.println("! Unknown command: " + cmd);
         }
     }
@@ -802,79 +897,3 @@ public class Calculator {
         if (inner.isEmpty()) throw new IllegalArgumentException("Vector cannot be empty");
         String[] tokens = inner.split(",");
         double[] data = new double[tokens.length];
-        for (int i = 0; i < tokens.length; i++) {
-            data[i] = Double.parseDouble(tokens[i]);
-        }
-        return new Vector(data);
-    }
-
-    private Object evaluate(String expr) {
-        // Simple shunting-yard implementation to support functions and parentheses
-        List<String> output = new ArrayList<>();
-        Deque<String> stack = new ArrayDeque<>();
-        String[] tokens = expr.replaceAll("([-+*/^(),])", " $1 ").split("\\s+");
-
-        for (String token : tokens) {
-            if (token.isEmpty()) continue;
-            if (token.matches("-?\\d+(?:\\.\\d+)?(?:/\\d+)?")) {
-                output.add(token);
-            } else if (token.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
-                if (isFunction(token)) {
-                    stack.push(token);
-                } else {
-                    output.add(token);
-                }
-            } else if (token.equals(",")) {
-                while (!stack.isEmpty() && !stack.peek().equals("(")) {
-                    output.add(stack.pop());
-                }
-            } else if (token.equals("(")) {
-                stack.push(token);
-            } else if (token.equals(")")) {
-                while (!stack.isEmpty() && !stack.peek().equals("(")) {
-                    output.add(stack.pop());
-                }
-                if (!stack.isEmpty() && stack.peek().equals("(")) stack.pop();
-                if (!stack.isEmpty() && isFunction(stack.peek())) {
-                    output.add(stack.pop());
-                }
-            } else {
-                // Operator
-                while (!stack.isEmpty() && precedence(stack.peek()) >= precedence(token) && !stack.peek().equals("(")) {
-                    output.add(stack.pop());
-                }
-                stack.push(token);
-            }
-        }
-        while (!stack.isEmpty()) output.add(stack.pop());
-
-        Deque<Object> evalStack = new ArrayDeque<>();
-        for (String token : output) {
-            if (token.matches("-?\\d+(?:\\.\\d+)?(?:/\\d+)?")) {
-                if (token.contains("/")) {
-                    String[] frac = token.split("/");
-                    evalStack.push(Fraction.of(Long.parseLong(frac[0]), Long.parseLong(frac[1])));
-                } else {
-                    evalStack.push(Double.parseDouble(token));
-                }
-            } else if (token.matches("[a-zA-Z_][a-zA-Z0-9_]*")) {
-                evalStack.push(fetch(token));
-            } else if (isFunction(token)) {
-                Object arg = evalStack.pop();
-                evalStack.push(applyFunc(token, arg));
-            } else {
-                Object b = evalStack.pop();
-                Object a = evalStack.pop();
-                evalStack.push(applyOp(a, b, token));
-            }
-        }
-        return evalStack.pop();
-    }
-
-    private Object applyOp(Object a, Object b, String op) {
-        if (op.equals("=")) throw new IllegalArgumentException("Assignment not allowed here");
-
-        if (a instanceof Matrix ma && b instanceof Matrix mb) {
-            return switch (op) {
-                case "+" -> ma.add(mb);
-                case "-"
