@@ -380,7 +380,7 @@ public class Calculator {
             if (Double.isInfinite(a + b)) throw new ArithmeticException("Overflow in matrix addition");
         }
 
-        // --- NEW: Row Echelon Form (REF) ---
+        // --- Row Echelon Form (REF) ---
         Matrix rowEchelonForm() {
             double[][] a = deepCopy(m);
             int lead = 0;
@@ -411,7 +411,7 @@ public class Calculator {
             return new Matrix(a);
         }
 
-        // --- NEW: Reduced Row Echelon Form (RREF) ---
+        // --- Reduced Row Echelon Form (RREF) ---
         Matrix reducedRowEchelonForm() {
             double[][] a = rowEchelonForm().m;
             for (int r = rows - 1; r >= 0; r--) {
@@ -433,9 +433,22 @@ public class Calculator {
             return new Matrix(a);
         }
 
-        // --- NEW: LU Decomposition ---
-        // Returns a single matrix where L (with 1.0 on diagonal) is in the lower triangle
-        // and U is in the upper triangle.
+        // --- Rank (NEW) ---
+        int rank() {
+            double[][] ref = rowEchelonForm().m;
+            int rank = 0;
+            for (int r = 0; r < rows; r++) {
+                for (int c = 0; c < cols; c++) {
+                    if (Math.abs(ref[r][c]) > 1e-12) {
+                        rank++;
+                        break;
+                    }
+                }
+            }
+            return rank;
+        }
+
+        // --- LU Decomposition ---
         Matrix luDecomposition() {
             if (rows != cols) {
                 throw new IllegalArgumentException("LU decomposition requires a square matrix");
@@ -444,7 +457,6 @@ public class Calculator {
             int n = rows;
 
             for (int k = 0; k < n; k++) {
-                // Check for zero pivot
                 if (Math.abs(a[k][k]) < 1e-12) {
                     throw new ArithmeticException("Zero pivot encountered, matrix is singular or requires pivoting");
                 }
@@ -458,30 +470,28 @@ public class Calculator {
             return new Matrix(a);
         }
 
-        // Solves Ly = b for y (forward substitution)
         Vector forwardSubstitution(Vector b) {
             if (rows != cols || b.getDim() != rows) {
                 throw new IllegalArgumentException("Invalid dimensions for forward substitution");
             }
             double[] y = new double[rows];
-            double[][] l = m; // L is stored in the lower part of this matrix
+            double[][] l = m;
             for (int i = 0; i < rows; i++) {
                 double sum = b.v[i];
                 for (int j = 0; j < i; j++) {
                     sum -= l[i][j] * y[j];
                 }
-                y[i] = sum / l[i][i]; // l[i][i] is 1.0 in Doolittle's, but kept for generality
+                y[i] = sum / l[i][i];
             }
             return new Vector(y);
         }
 
-        // Solves Ux = y for x (backward substitution)
         Vector backwardSubstitution(Vector y) {
             if (rows != cols || y.getDim() != rows) {
                 throw new IllegalArgumentException("Invalid dimensions for backward substitution");
             }
             double[] x = new double[rows];
-            double[][] u = m; // U is stored in the upper part of this matrix
+            double[][] u = m;
             for (int i = rows - 1; i >= 0; i--) {
                 double sum = y.v[i];
                 for (int j = i + 1; j < rows; j++) {
@@ -528,6 +538,7 @@ public class Calculator {
     private static final String CMD_REF = "/ref";
     private static final String CMD_RREF = "/rref";
     private static final String CMD_SOLVE = "/solve";
+    private static final String CMD_RANK = "/rank";
 
     private static final Set<String> RESERVED_NAMES = Set.of("ans", "pi", "e", "phi", "gamma", "x");
 
@@ -554,6 +565,7 @@ public class Calculator {
                 System.out.println("Matrix power: A ^ 2, A ^ -1 (inverse)");
                 System.out.println("New: /ref <matrix> (Row Echelon Form), /rref <matrix> (Reduced Row Echelon Form)");
                 System.out.println("New: /solve <matrix_A> <vector_b> (Solves Ax = b using LU decomposition)");
+                System.out.println("New: /rank <matrix> (Computes the rank of a matrix)");
                 continue;
             }
 
@@ -670,7 +682,6 @@ public class Calculator {
                     System.err.println("! Argument for /rref must be a matrix");
                 }
             }
-            // --- NEW: Solve Command ---
             case CMD_SOLVE -> {
                 if (arg == null) {
                     System.err.println("! Usage: /solve <matrix_A> <vector_b>");
@@ -705,7 +716,21 @@ public class Calculator {
                     System.err.printf("! Error: %s%n", ex.getMessage());
                 }
             }
-
+            case CMD_RANK -> {
+                if (arg == null) {
+                    System.err.println("! Usage: /rank <matrix_variable>");
+                    return;
+                }
+                Object obj = fetch(arg);
+                if (obj instanceof Matrix m) {
+                    int r = m.rank();
+                    System.out.println("=> " + r);
+                    commandLog.add(line + " = " + r);
+                    lastResult = (double) r;
+                } else {
+                    System.err.println("! Argument for /rank must be a matrix");
+                }
+            }
             default -> System.err.println("! Unknown command: " + cmd);
         }
     }
@@ -763,6 +788,10 @@ public class Calculator {
             System.out.println("=> " + s);
             commandLog.add(expr + " = " + s);
             lastResult = null;
+        } else if (value instanceof Integer i) {
+            System.out.println("=> " + i);
+            commandLog.add(expr + " = " + i);
+            lastResult = i.doubleValue();
         }
     }
 
@@ -854,13 +883,11 @@ public class Calculator {
     }
 
     private Matrix parseMatrix(String input) {
-        // --- FIXED: Robust parsing for matrices with spaces and newlines ---
         String clean = input.trim();
         if (!clean.startsWith("[[") || !clean.endsWith("]]")) {
             throw new IllegalArgumentException("Invalid matrix format");
         }
         String inner = clean.substring(2, clean.length() - 2);
-        // Remove all whitespace (spaces, tabs, newlines) inside the matrix definition
         inner = inner.replaceAll("\\s+", "");
         
         List<double[]> rows = new ArrayList<>();
@@ -897,3 +924,9 @@ public class Calculator {
         if (inner.isEmpty()) throw new IllegalArgumentException("Vector cannot be empty");
         String[] tokens = inner.split(",");
         double[] data = new double[tokens.length];
+        for (int i = 0; i < tokens.length; i++) {
+            data[i] = Double.parseDouble(tokens[i]);
+        }
+        return new Vector(data);
+    }
+}
